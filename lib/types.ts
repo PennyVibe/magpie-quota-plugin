@@ -1,7 +1,7 @@
 export type Problem = { code: string; message: string };
 export type Metric = { limit: number | null; used: number | null; remaining: number | null; uncapped: boolean };
 export type Quota = {
-  limited: boolean; period: 'day' | 'week' | 'month' | null;
+  limited: boolean; period: 'day' | 'week' | 'month' | 'days' | null; days: number | null;
   start: string | null; reset: string | null; tokens: Metric; cost: Metric;
   spent: boolean | null; cacheReads: boolean | null; unpriced: number | null;
 };

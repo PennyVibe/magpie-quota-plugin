@@ -86,7 +86,7 @@ export function renderSnapshot(snapshot: Snapshot | null, transportError = false
   const errors = [snapshot.quotaError].filter(Boolean);
   let quota = '';
   if (q) {
-    const title = q.limited ? `${{ day: '每日', week: '每周', month: '每月' }[q.period!]}用量与限额` : '个人用量与限额';
+    const title = q.limited ? `${q.period === 'days' ? `每 ${q.days} 天` : { day: '每日', week: '每周', month: '每月' }[q.period!]}用量与限额` : '个人用量与限额';
     quota = `<article class="quota-card"><div class="card-title"><h2>${title}</h2><span class="badge${q.spent === true ? ' exhausted' : ''}">${!q.limited ? '未设置限额' : q.spent === true ? '额度耗尽' : q.spent === false ? '尚未耗尽' : '耗尽状态未提供'}</span></div>
       <div class="metrics">${metric(q.tokens, false)}${metric(q.cost, true)}</div>
       ${q.limited ? `<div class="reset"><dl class="time-details"><div><dt>窗口开始</dt><dd>${time(q.start)}</dd></div><div><dt>服务器重置</dt><dd>${time(q.reset)}</dd></div></dl><strong id="countdown">${escape(countdown(q.reset))}</strong></div>

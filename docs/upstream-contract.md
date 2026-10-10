@@ -1,9 +1,9 @@
 # Magpie 接口契约与兼容性
 
-核对日期：2026-10-10。官方仓库 `yetone/magpie`，源码快照 commit `3a1ade9729996d81b67beaf4570250f9772fa10b`，通过公开 Git clone 获取并核对 `HEAD`，不使用已有服务器凭证。初次在线网页读取未返回内容，公开 Git 与 raw 文档下载成功；后续在线读取也成功核对固定 commit 的关键处理函数。GitHub API tree 请求返回 403，未影响最终源码核对。
+核对日期：2026-10-10。当前适配目标为官方仓库 `yetone/magpie` 最新源码快照 commit `d06df1825502c4efe9c9085cf343d9dda44b582a`。通过 GitHub API 核对 `HEAD` 与固定源码；仅使用合成 Key / mock 验证，不读取已有服务器凭证。本插件按当前接口契约解析，不增加旧版本回退接口或窗口推断。
 
 官方文档：
-<https://github.com/yetone/magpie/blob/3a1ade9729996d81b67beaf4570250f9772fa10b/docs/reference.md>
+<https://github.com/yetone/magpie/blob/d06df1825502c4efe9c9085cf343d9dda44b582a/docs/reference.md>
 
 关键源码（以下路径均相对该 commit）：
 
@@ -65,7 +65,8 @@ GET 状态查询不执行模型推理，也不被个人额度 POST 限制阻止�
 | 字段 | 已确认含义 | 插件处理 |
 | --- | --- | --- |
 | `limited` | Key 是否有非零 Token 或费用 cap | 必须为 boolean，缺失不视作 unlimited |
-| `period` | 一个窗口，`day` / `week` / `month` | 展示实际一个窗口，未知值报契约不支持 |
+| `period` | 一个窗口，`day` / `week` / `month` / `days` | 展示实际窗口；`days` 显示“每 N 天”，未知值报契约不支持 |
+| `days` | `period:days` 时的整数周期天数，范围 1–3650；其他周期省略 | `days` 周期必须提供合法值，不根据起止时间猜天数；其他周期不使用 |
 | `start` / `reset` | Go time.Time JSON 的 RFC3339 时间 | 保留原始瞬间；页面转为北京时间，缺失不推断 |
 | `tokens` | 已结算未缓存输入、输出、缓存写入，配置开启时还包括缓存读取 | 非负安全整数；缺失或无效显示未知 |
 | `cost` | 服务器 Usage 价格的 USD 估算费用 | 非负有限数；不标实际账单 |
@@ -79,7 +80,9 @@ GET 状态查询不执行模型推理，也不被个人额度 POST 限制阻止�
 
 cap 为 0 表示无 cap，源码 `Limited()` 只有 `Tokens > 0 || Cost > 0` 才有配置。因此“零额度”在当前版本主要是实际已用 0 或剩余 0；不能把配置 cap=0 宣称为禁止使用。插件用合成 mock 验证真实零值、缺失、负数、非有限值和溢出，未捏造另一种上游配置语义。
 
-窗口由服务器自身 time.Location 计算：日从午夜、周从周一午夜、月从月初。调用计入开始时所在窗口，重启后从 usage log 恢复。插件不使用本机时区补窗口。费用未定价调用不加成本；总费用不是充值余额。
+当前源码包含 #1509（commit `3541ec2fd5ca544bcae9d48cfefb5a4ebfca9abf`）：`budget.Status` 新增 `days` 字段，GET `/limit` 路径和其他额度字段保持原样。`days` 周期从服务器设置限额或重置用量时开始，每个周期为 N×24 小时的绝对时间，不按午夜、周一或月初计算。日、周、月仍使用服务器 time.Location 的日历窗口。
+
+服务器手动重置用量后，Token 与费用窗口计数从零开始，但 usage log 不删除。`days` 周期同时重新开始；日、周、月保留原重置终点。插件直接采用每次响应的 `start/reset` 和剩余值，不使用本机时区补窗口、不根据 N 推算重置时间，也不将额度重置当作模型统计清零。费用未定价调用不加成本；总费用不是充值余额。
 
 ## GET /v1/magpie/usage 与 /v1/magpie/usage/requests
 

@@ -5,7 +5,7 @@ import { PanelController } from './controller';
 import { countdown, escape, renderSnapshot, type UsageViewState } from './view';
 import { brandMark } from '../lib/brand';
 const root = document.getElementById('app')!;
-const app = window.parent !== window ? new App({ name: 'Magpie 额度看板', version: '0.1.2' },
+const app = window.parent !== window ? new App({ name: 'Magpie 额度看板', version: '0.1.3' },
   { availableDisplayModes: ['fullscreen'] }, { autoResize: false }) : null;
 if (app) new OpenAIExtensions(app);
 let alive = true, ready = false, busy = false, managing = false, transportError = false, snapshot: Snapshot | null = null;

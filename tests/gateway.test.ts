@@ -20,6 +20,26 @@ test('真实 contract 映射单窗口、服务器剩余和带偏移时间', () =
   assert.equal(q.tokens.remaining, 51); assert.equal(q.reset, '2026-10-12T00:00:00+08:00');
   assert.equal(q.cost.remaining, 1.875);
 });
+test('每 N 天额度周期保留服务器起止时间、用量和剩余值', () => {
+  const start = '2026-10-10T15:40:00Z';
+  for (const days of [1, 10, 3650]) {
+    const reset = new Date(Date.parse(start) + days * 86400000).toISOString();
+    const q = parseQuota(quotaFixture({ period: 'days', days, start, reset, tokensLeft: 51 }));
+    assert.equal(q.period, 'days'); assert.equal(q.days, days);
+    assert.equal(q.start, start); assert.equal(q.reset, reset);
+    assert.equal(q.tokens.used, 30); assert.equal(q.tokens.remaining, 51); assert.equal(q.cost.remaining, 1.875);
+  }
+  assert.equal(parseQuota(quotaFixture()).days, null);
+  assert.equal(parseQuota({ limited: false, key: 'Synthetic' }).days, null);
+});
+test('额度周期拒绝类型错误的 period 与缺失、非整数或越界的天数', () => {
+  assert.throws(() => parseQuota(quotaFixture({ period: ['days'], days: 10 })),
+    (error: GatewayError) => error.code === 'contract' && error.message.includes('未支持的额度窗口'));
+  for (const days of [undefined, null, 0, -1, 3651, 1.5, '10', NaN, Infinity]) {
+    assert.throws(() => parseQuota(quotaFixture({ period: 'days', days })),
+      (error: GatewayError) => error.code === 'contract' && error.message.includes('1 至 3650'));
+  }
+});
 test('无限额、零上限的无 cap 语义与实际零用量/零剩余分别保留', () => {
   assert.equal(parseQuota({ limited: false, key: 'Synthetic' }).limited, false);
   const q = parseQuota(quotaFixture({ tokenLimit: 0, tokens: 0, cost: 0, costLeft: 0, spent: true }));
@@ -42,7 +62,7 @@ test('费用缺失/非有限值不生成余额或进度；未知日期不推断'
 });
 for (const value of [{}, { limited: true, key: 'User', limit: { period: 'hour' } },
   { limited: true, key: 'User', limit: { period: 'day', renamedTokenCap: 100 } }, { limited: false, key: '' }, { limited: false }]) {
-  test(`接口版本差异不能误判无限额: ${JSON.stringify(value)}`, () => assert.throws(() => parseQuota(value), GatewayError));
+  test(`接口契约异常不能误判无限额: ${JSON.stringify(value)}`, () => assert.throws(() => parseQuota(value), GatewayError));
 }
 test('模型仅提取 ID，过滤凭证回显且不复制共享元数据', () => {
   assert.deepEqual(parseModels({ object: 'list', data: [

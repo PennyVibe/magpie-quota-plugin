@@ -7,7 +7,7 @@ const connectSource = await readFile('generated/local-connect.ts', 'utf8');
 const connectHtml = JSON.parse(connectSource.slice(connectSource.indexOf(' = ') + 3).trim().replace(/;$/, ''));
 const snapshot = {
   revision: 'synthetic-preview', connection: { id: 'preview', name: '模拟连接 · 非真实数据', baseUrl: 'https://example.com/magpie-gateway/v1' },
-  quota: { limited: true, period: 'week', start: '2026-10-05T00:00:00+08:00', reset: '2026-10-12T00:00:00+08:00',
+  quota: { limited: true, period: 'week', days: null, start: '2026-10-05T00:00:00+08:00', reset: '2026-10-12T00:00:00+08:00',
     tokens: { used: 1240000000, limit: 2000000000, remaining: 760000000, uncapped: false },
     cost: { used: 2.15, limit: 5, remaining: 2.85, uncapped: false }, spent: false, cacheReads: false, unpriced: null },
   models: null,
@@ -30,6 +30,10 @@ const snapshot = {
       resetSeconds: null, amount: null, limit: null, unit: null }] }],
 };
 const scenarios = { both: snapshot,
+  'days-cycle': { ...snapshot, quota: { ...snapshot.quota,
+    period: 'days', days: 10, start: '2026-10-10T23:40:00+08:00', reset: '2026-10-20T23:40:00+08:00',
+    tokens: { used: 6400000, limit: null, remaining: null, uncapped: true },
+    cost: { used: 38.451569, limit: 800, remaining: 761.548431, uncapped: false } } },
   'usage-unsupported': { ...snapshot, usage: null, usageError: { code: 'unsupported', message: '此服务器版本不支持用量读取接口。' } },
   'usage-scope': { ...snapshot, usage: null, usageError: { code: 'usage_scope_unknown', message: '未受限 Key 暂不支持个人用量统计。' } },
   'usage-empty': { ...snapshot, usage: { ...snapshot.usage, totals: { calls: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, tokens: 0, cost: 0, unpriced: 0 }, models: [] } },
@@ -43,7 +47,7 @@ const scenarios = { both: snapshot,
     quota: { ...snapshot.quota, cost: { used: 1234567890123.1235, limit: 2000000000000, remaining: 765432109876.8765, uncapped: false } } },
   'token-only': { ...snapshot, quota: { ...snapshot.quota, cost: { used: null, limit: null, remaining: null, uncapped: true } } },
   'cost-only': { ...snapshot, quota: { ...snapshot.quota, tokens: { used: null, limit: null, remaining: null, uncapped: true } } },
-  unlimited: { ...snapshot, quota: { limited: false, period: null, start: null, reset: null,
+  unlimited: { ...snapshot, quota: { limited: false, period: null, days: null, start: null, reset: null,
     tokens: { used: null, limit: null, remaining: null, uncapped: true }, cost: { used: null, limit: null, remaining: null, uncapped: true },
     spent: null, cacheReads: null, unpriced: null } },
 };

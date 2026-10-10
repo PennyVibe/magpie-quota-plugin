@@ -16,7 +16,7 @@ const client = new Client({ name: 'magpie-package-verification', version: '1.0.0
 let remote;
 try {
   await client.connect(transport);
-  assert.equal(client.getServerVersion()?.name, 'Magpie 额度看板'); assert.equal(client.getServerVersion()?.version, '0.1.2');
+  assert.equal(client.getServerVersion()?.name, 'Magpie 额度看板'); assert.equal(client.getServerVersion()?.version, '0.1.3');
   const tools = (await client.listTools()).tools;
   const icons = client.getServerVersion()?.icons;
   assert.equal(icons?.length, 1);
@@ -50,6 +50,7 @@ try {
   // Exercise the packaged browser/backend path with a synthetic key only.
   const synthetic = 'synthetic-package-gateway-key';
   const paths = [];
+  let cycle = false;
   remote = createServer((req, res) => {
     paths.push(req.url);
     assert.equal(req.method, 'GET'); assert.equal(req.headers.authorization, `Bearer ${synthetic}`);
@@ -73,7 +74,10 @@ try {
     res.end(JSON.stringify(req.url.endsWith('/models') ? { object: 'list', data: [{ id: 'synthetic/model' }, { id: synthetic }] } :
       req.url.endsWith('/cards') ? { object: 'list', data: [{ provider: 'codex', name: 'Codex', kind: 'subscription',
         user: 'synthetic-private@example.test', windows: [{ name: '5h', used: 25 }], error: synthetic }] } :
-        { limited: false, key: 'Synthetic package user' }));
+        cycle ? { limited: true, key: 'Synthetic package user', limit: { period: 'days', days: 10,
+          start: '2026-10-10T23:40:00+08:00', reset: '2026-10-20T23:40:00+08:00',
+          tokens: 0, tokenLimit: 700, tokensLeft: 700, cost: 0, spent: false } } :
+          { limited: false, key: 'Synthetic package user' }));
   });
   await new Promise(resolve => remote.listen(0, '127.0.0.1', resolve));
   const address = `http://127.0.0.1:${remote.address().port}/deployment/v1`;
@@ -101,6 +105,15 @@ try {
     assert.equal(ranged.structuredContent.usage.period, period);
     assert.equal(ranged.structuredContent.usage.totals.tokens, 3200);
   }
+  cycle = true;
+  const probes = paths.filter(path => path.includes('/magpie/usage?')).length;
+  const cycled = await client.callTool({ name: 'open_quota_dashboard', arguments: {} });
+  assert.equal(cycled.structuredContent.quotaError, null); assert.equal(cycled.structuredContent.usageError, null);
+  assert.equal(cycled.structuredContent.quota.period, 'days'); assert.equal(cycled.structuredContent.quota.days, 10);
+  assert.equal(cycled.structuredContent.quota.reset, '2026-10-20T23:40:00+08:00');
+  assert.equal(cycled.structuredContent.usage.scope, 'current-key');
+  assert.equal(cycled.structuredContent.usage.totals.tokens, 3200);
+  assert.equal(paths.filter(path => path.includes('/magpie/usage?')).length, probes);
   assert.ok(!paths.some(path => path.endsWith('/models')), 'Dashboard must not read the hidden model list');
   const models = await client.callTool({ name: 'list_available_models', arguments: {} });
   assert.deepEqual(models.structuredContent.models, ['synthetic/model']);
@@ -115,9 +128,9 @@ try {
   assert.ok(!JSON.stringify(shared).includes(synthetic));
   assert.ok(!JSON.stringify(shared).includes('synthetic-private'));
   assert.equal(stderr, '');
-  console.log(JSON.stringify({ ok: true, entry, version: '0.1.2', tools: tools.length, globalFullscreen: true, sidebarIconMetadata: true,
+  console.log(JSON.stringify({ ok: true, entry, version: '0.1.3', tools: tools.length, globalFullscreen: true, sidebarIconMetadata: true,
     noCredentials: true, syntheticBrowserConnection: true, prefixAndKeyRoundtrip: true, keyExcludedFromProtocol: true, sharedQuotaDefault: true,
-    personalUsageRanges: true, usageMetadataExcluded: true, closedArguments: true, hostMetadataIsolated: true, stderrBytes: 0 }, null, 2));
+    personalUsageRanges: true, daysCycleQuota: true, usageMetadataExcluded: true, closedArguments: true, hostMetadataIsolated: true, stderrBytes: 0 }, null, 2));
 } finally {
   await client.close();
   if (remote) { remote.closeAllConnections(); await new Promise(resolve => remote.close(resolve)); }

@@ -136,3 +136,43 @@ test('独立模型读取失败不会污染看板快照，看板不重复读取�
     assert.equal(modelReads, 2);
   } finally { await server.close(); await t.close(); }
 });
+test('额度切换到每 N 天后继续读取个人模型用量，服务器重置仅更新额度窗口', async () => {
+  const t = await temporaryStore(), paths: string[] = [];
+  let cycle = false, reset = false;
+  const server = await mockServer((req, res) => {
+    assert.equal(req.method, 'GET'); assert.equal(req.headers.authorization, `Bearer ${keyA}`);
+    paths.push(req.url!);
+    if (req.url?.endsWith('/limit')) json(res, quotaFixture(cycle ? {
+      period: 'days', days: 10,
+      start: reset ? '2026-10-11T01:40:00+08:00' : '2026-10-10T23:40:00+08:00',
+      reset: reset ? '2026-10-21T01:40:00+08:00' : '2026-10-20T23:40:00+08:00',
+      ...(reset ? { tokens: 0, tokensLeft: 100, cost: 0, costLeft: 2 } : {}),
+    } : {}));
+    else if (req.url?.endsWith('/cards')) json(res, { object: 'list', data: [] });
+    else json(res, usageFixture());
+  });
+  try {
+    await t.store.update('empty', s => {
+      s.connections = [{ id: 'a', name: 'Alpha', baseUrl: `${server.origin}/v1`, key: keyA }]; s.activeId = 'a';
+    });
+    const runtime = new Runtime(t.store), weekly = await runtime.snapshot('dashboard');
+    assert.equal(weekly.quota?.period, 'week');
+    cycle = true;
+    const changed = await runtime.snapshot('dashboard');
+    assert.equal(changed.quotaError, null); assert.equal(changed.usageError, null); assert.equal(changed.stale, false);
+    assert.equal(changed.quota?.period, 'days'); assert.equal(changed.quota?.days, 10);
+    assert.equal(changed.quota?.reset, '2026-10-20T23:40:00+08:00');
+    assert.equal(changed.usage?.scope, 'current-key'); assert.deepEqual(changed.usage, weekly.usage);
+    reset = true;
+    const restarted = await runtime.snapshot('dashboard');
+    assert.equal(restarted.quota?.start, '2026-10-11T01:40:00+08:00');
+    assert.equal(restarted.quota?.reset, '2026-10-21T01:40:00+08:00');
+    assert.equal(restarted.quota?.tokens.used, 0); assert.equal(restarted.quota?.cost.used, 0);
+    assert.deepEqual(restarted.usage, changed.usage);
+    assert.deepEqual([...new Set(paths)].sort(), [
+      '/v1/magpie/limit', '/v1/magpie/quotas/cards',
+      '/v1/magpie/usage/requests?period=today&via=through&limit=1&offset=0',
+    ]);
+    assert.ok(!JSON.stringify(restarted).includes(keyA));
+  } finally { await server.close(); await t.close(); }
+});

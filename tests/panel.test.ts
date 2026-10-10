@@ -55,6 +55,23 @@ function mount(options: { hold?: boolean; hidden?: boolean } = {}) {
     close: () => { dom.window.dispatchEvent(new dom.window.Event('pagehide')); dom.window.close(); },
   };
 }
+test('构建看板刷新到每 N 天周期后显示正确标题、服务器时间和个人模型用量', async () => {
+  const m = mount();
+  try {
+    await delay();
+    m.change({ ...snapshot, quota: parseQuota(quotaFixture({
+      period: 'days', days: 10, start: '2026-10-10T23:40:00+08:00', reset: '2026-10-20T23:40:00+08:00',
+    })) });
+    m.dom.window.document.querySelector<HTMLButtonElement>('#refresh')!.click(); await delay();
+    const document = m.dom.window.document;
+    assert.equal(document.querySelector('.quota-card h2')?.textContent, '每 10 天用量与限额');
+    const times = [...document.querySelectorAll('.time-details dd')].map(element => element.textContent);
+    assert.ok(times[0]?.includes('2026-10-10 23:40:00')); assert.ok(times[1]?.includes('2026-10-20 23:40:00'));
+    assert.ok(document.body.textContent?.includes('model-alpha'));
+    assert.ok(!document.body.textContent?.includes('未支持的额度窗口'));
+    assert.deepEqual(m.errors, []);
+  } finally { m.close(); }
+});
 test('真实 SDK 面板握手、刷新不重叠、60 秒节奏与 autoResize 关闭', async () => {
   const m = mount({ hold: true });
   try {

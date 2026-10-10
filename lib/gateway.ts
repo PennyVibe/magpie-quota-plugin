@@ -44,14 +44,18 @@ export function parseQuota(value: unknown): Quota {
   if (typeof o.limited !== 'boolean') throw new GatewayError('contract', '接口缺少 limited 状态，无法判定是否设置限额。');
   // Loopback Magpie permits invalid tokens and answers limited:false with an empty key.
   if (typeof o.key !== 'string' || !o.key.trim()) throw new GatewayError('key_unattributed', '服务器未将请求归属到 Gateway key；无法确认 Key 身份或个人额度。');
-  if (!o.limited) return { limited: false, period: null, start: null, reset: null,
+  if (!o.limited) return { limited: false, period: null, days: null, start: null, reset: null,
     tokens: { limit: null, used: null, remaining: null, uncapped: true }, cost: { limit: null, used: null, remaining: null, uncapped: true },
     spent: null, cacheReads: null, unpriced: null };
   const s = object(o.limit);
-  if (!['day', 'week', 'month'].includes(String(s.period))) throw new GatewayError('contract', '服务器返回了未支持的额度窗口。');
+  if (typeof s.period !== 'string' || !['day', 'week', 'month', 'days'].includes(s.period)) throw new GatewayError('contract', '服务器返回了未支持的额度窗口。');
+  const days = s.period === 'days' ? number(s.days, true) : null;
+  if (s.period === 'days' && (days === null || days < 1 || days > 3650)) {
+    throw new GatewayError('contract', '服务器返回的额度周期天数必须是 1 至 3650 的整数。');
+  }
   const tokens = metric(s, 'tokenLimit', 'tokens', 'tokensLeft', true), cost = metric(s, 'costLimit', 'cost', 'costLeft', false);
   if (tokens.uncapped && cost.uncapped) throw new GatewayError('contract', 'limited 状态与额度上限矛盾，无法确认此版本的限额结构。');
-  return { limited: true, period: s.period as Quota['period'], start: instant(s.start), reset: instant(s.reset),
+  return { limited: true, period: s.period as Quota['period'], days, start: instant(s.start), reset: instant(s.reset),
     tokens, cost,
     spent: typeof s.spent === 'boolean' ? s.spent : null, cacheReads: typeof s.cacheReads === 'boolean' ? s.cacheReads : null,
     unpriced: number(s.unpriced, true) };

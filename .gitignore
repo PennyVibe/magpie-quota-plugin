@@ -1,0 +1,12 @@
+node_modules/
+dist/
+outputs/
+*.log
+.env*
+connections.json
+connections.lock/
+.connections-*.tmp
+.DS_Store
+.codex/
+coverage/
+*.tsbuildinfo

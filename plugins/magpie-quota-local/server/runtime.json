@@ -1,0 +1,10 @@
+{
+  "name": "magpie-quota-local",
+  "version": "0.1.0",
+  "node": ">=22.13.0",
+  "platform": "darwin",
+  "arch": "arm64",
+  "macOS": ">=13.0",
+  "nativeHelper": null,
+  "credentialStorage": "plaintext JSON"
+}

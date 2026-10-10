@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "magpie-quota-local": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/server/launch.cjs"
+      ],
+      "cwd": "${PLUGIN_ROOT}"
+    }
+  }
+}

@@ -1,0 +1,57 @@
+name: 验证跨平台插件
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            node: '22.13.0'
+          - os: windows-2025
+            node: '22.17.0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+      - run: npm run local:package
+      - run: npm run marketplace:package
+      - name: 检查仓库预构建文件与源码一致
+        run: npm run marketplace:check
+      - name: 验证仓库内的 STDIO 服务
+        run: node scripts/verify-local.mjs plugins/magpie-quota-local/server/launch.cjs
+      - name: 验证 Git 分发及检出后的 STDIO 服务
+        run: npm run marketplace:verify
+      - name: 验证归档和解包后的 STDIO 服务
+        run: npm run local:verify:package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: magpie-quota-${{ runner.os }}-${{ runner.arch }}
+          path: |
+            dist/Magpie-*.tar.gz
+            dist/Magpie-*.zip
+            dist/Magpie-*.sha256
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: magpie-marketplace-${{ runner.os }}-${{ runner.arch }}
+          path: dist/private-marketplace/
+          include-hidden-files: true
+          if-no-files-found: error

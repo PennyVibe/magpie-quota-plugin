@@ -1,0 +1,20 @@
+{
+  "name": "magpie-local",
+  "interface": {
+    "displayName": "Magpie 额度看板"
+  },
+  "plugins": [
+    {
+      "name": "magpie-quota-local",
+      "source": {
+        "source": "local",
+        "path": "./plugins/magpie-quota-local"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

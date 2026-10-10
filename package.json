@@ -1,0 +1,42 @@
+{
+  "name": "magpie-quota-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "pretest": "node scripts/build-local.mjs --ui-only",
+    "test": "node scripts/test-local.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint local lib widget tests scripts eslint.config.mjs",
+    "build": "node scripts/build-local.mjs",
+    "local:build": "node scripts/build-local.mjs",
+    "local:package": "node scripts/package-local.mjs",
+    "local:verify": "node scripts/verify-local.mjs",
+    "local:verify:package": "node scripts/verify-package.mjs",
+    "marketplace:package": "node scripts/package-marketplace.mjs",
+    "marketplace:sync": "npm run marketplace:package && node scripts/sync-marketplace.mjs",
+    "marketplace:check": "node scripts/sync-marketplace.mjs --check",
+    "marketplace:verify": "node scripts/verify-marketplace.mjs",
+    "ui:preview": "node scripts/preview-ui.mjs",
+    "start": "node dist/local/launch.cjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "1.7.5",
+    "@modelcontextprotocol/sdk": "1.32.0",
+    "@openai/mcp-extensions": "0.1.0",
+    "zod": "4.2.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "21.1.7",
+    "@types/node": "22.19.19",
+    "esbuild": "0.28.1",
+    "eslint": "9.39.4",
+    "jsdom": "26.1.0",
+    "tsx": "4.20.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.59.3"
+  }
+}

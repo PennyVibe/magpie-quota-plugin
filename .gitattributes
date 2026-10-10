@@ -1,0 +1,4 @@
+# Keep prebuilt runtime bytes identical across Git clients and platforms.
+* -text
+# Third-party template strings in the generated bundle preserve their whitespace.
+plugins/magpie-quota-local/server/server.mjs -whitespace

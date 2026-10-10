@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { lstat, readFile, readdir, symlink, mkdir } from 'node:fs/promises';
+import { lstat, readFile, readdir, symlink, mkdir, writeFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Runtime } from '../local/runtime';
 import { ConnectionStore } from '../local/store';
@@ -10,8 +10,10 @@ test('独立原子持久存储、文件权限与多个实例冲突保护', async
   const t = await temporaryStore();
   try {
     const a = await t.store.update('empty', s => { s.connections.push({ id: 'a', name: 'Alpha', baseUrl: 'https://alpha.example.test/v1', key: keyA }); s.activeId = 'a'; });
-    assert.equal((await lstat(t.store.directory)).mode & 0o777, 0o700);
-    assert.equal((await lstat(join(t.store.directory, 'connections.json'))).mode & 0o777, 0o600);
+    if (process.platform !== 'win32') {
+      assert.equal((await lstat(t.store.directory)).mode & 0o777, 0o700);
+      assert.equal((await lstat(join(t.store.directory, 'connections.json'))).mode & 0o777, 0o600);
+    }
     assert.ok((await readFile(join(t.store.directory, 'connections.json'), 'utf8')).includes(keyA));
     const second = new ConnectionStore(t.store.directory);
     assert.equal((await second.read()).connections[0].key, keyA);
@@ -25,9 +27,19 @@ test('独立原子持久存储、文件权限与多个实例冲突保护', async
 test('拒绝凭证文件符号链接，避免访问未知文件', async () => {
   const t = await temporaryStore();
   try {
-    await mkdir(t.store.directory); await symlink(join(t.directory, 'unknown'), join(t.store.directory, 'connections.json'));
-    // A dangling symlink must not be treated as an empty store and overwritten.
-    await assert.rejects(t.store.read());
+    await mkdir(t.store.directory);
+    const target = join(t.directory, 'unknown'), link = join(t.store.directory, 'connections.json');
+    const content = JSON.stringify({ revision: 'empty', activeId: null, connections: [] });
+    for (const exists of [false, true]) {
+      if (exists) await writeFile(target, content);
+      await symlink(target, link, 'file');
+      // Both dangling and valid-target links must be rejected before reading or replacing them.
+      await assert.rejects(t.store.read(), /无法安全读取/);
+      await assert.rejects(t.store.update('empty', s => { s.activeId = null; }), /无法安全读取/);
+      assert.ok((await lstat(link)).isSymbolicLink());
+      if (exists) assert.equal(await readFile(target, 'utf8'), content);
+      await unlink(link);
+    }
   } finally { await t.close(); }
 });
 test('不同 Key 数据隔离、模型及结果没有 Gateway key 或共享标识', async () => {

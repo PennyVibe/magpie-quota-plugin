@@ -18,11 +18,19 @@ export class ConnectionStore {
   constructor(readonly directory = dataDirectory()) {}
   async read(): Promise<State> {
     try {
-      const file = await open(join(this.directory, 'connections.json'), constants.O_RDONLY | constants.O_NOFOLLOW);
+      const directory = await lstat(this.directory);
+      if (!directory.isDirectory() || directory.isSymbolicLink()) throw Error();
+      const filename = join(this.directory, 'connections.json');
+      const before = await lstat(filename);
+      if (!before.isFile() || before.isSymbolicLink() || before.size > 1024 * 1024) throw Error();
+      // O_NOFOLLOW is unavailable on Windows; compare path and opened-file identities as well.
+      const file = await open(filename, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
       try {
         const stat = await file.stat();
-        if (!stat.isFile() || stat.size > 1024 * 1024) throw Error();
+        if (!stat.isFile() || stat.size > 1024 * 1024 || stat.dev !== before.dev || stat.ino !== before.ino) throw Error();
         const s = JSON.parse(await file.readFile('utf8')) as State;
+        const after = await lstat(filename);
+        if (!after.isFile() || after.isSymbolicLink() || after.dev !== stat.dev || after.ino !== stat.ino) throw Error();
         if (!s || typeof s.revision !== 'string' || !Array.isArray(s.connections) || s.connections.length > 50 ||
             (s.activeId !== null && typeof s.activeId !== 'string')) throw Error();
         for (const c of s.connections) {

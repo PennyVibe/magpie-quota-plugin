@@ -50,6 +50,8 @@
 
 新增 GitHub Actions 分别在 macOS 14 / Node 22.13.0 和 Windows 2025 / Node 22.17.0 执行完整验证并保存归档。此处的本机结果不代表远端 CI 成功；CI 状态以 GitHub 实际运行记录为准。
 
+首次 GitHub CI 的 macOS 全部通过，Windows 暴露了 POSIX mode 断言与无 `O_NOFOLLOW` 平台的符号链接问题。修复后读文件先检查真实目录和文件，再对比 lstat / fstat 的设备与文件身份，读取后复核路径身份；测试覆盖悬空链接与有效目标链接，并确认链接及目标没有被改写。Windows 不用 POSIX mode 推断 NTFS ACL。实际 GitHub 市场添加、安装和启动已在隔离的 `CODEX_HOME` 中成功验证，未改动用户既有市场或已保存连接。
+
 ## 证据边界与待用户验收
 
 以下未以真实环境验证：用户实际 Magpie 部署版本、真实 Gateway key/权限与响应、真实宿主 global 全屏入口和跨面板生命周期、Windows 实机启动/浏览器/NTFS 权限、macOS Intel 与最低 Node 22.13.0 运行时。两平台启动器和打包路径已实现，不能把 macOS arm64 mock 成功当作 Windows 通过。

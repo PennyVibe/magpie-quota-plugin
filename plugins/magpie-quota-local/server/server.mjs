@@ -47192,11 +47192,18 @@ var ConnectionStore = class {
   directory;
   async read() {
     try {
-      const file3 = await open(join(this.directory, "connections.json"), constants.O_RDONLY | constants.O_NOFOLLOW);
+      const directory = await lstat(this.directory);
+      if (!directory.isDirectory() || directory.isSymbolicLink()) throw Error();
+      const filename = join(this.directory, "connections.json");
+      const before = await lstat(filename);
+      if (!before.isFile() || before.isSymbolicLink() || before.size > 1024 * 1024) throw Error();
+      const file3 = await open(filename, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
       try {
         const stat = await file3.stat();
-        if (!stat.isFile() || stat.size > 1024 * 1024) throw Error();
+        if (!stat.isFile() || stat.size > 1024 * 1024 || stat.dev !== before.dev || stat.ino !== before.ino) throw Error();
         const s = JSON.parse(await file3.readFile("utf8"));
+        const after = await lstat(filename);
+        if (!after.isFile() || after.isSymbolicLink() || after.dev !== stat.dev || after.ino !== stat.ino) throw Error();
         if (!s || typeof s.revision !== "string" || !Array.isArray(s.connections) || s.connections.length > 50 || s.activeId !== null && typeof s.activeId !== "string") throw Error();
         for (const c of s.connections) {
           if (typeof c.id !== "string" || typeof c.name !== "string" || !c.name.trim() || c.name.length > 80 || normalizeAddress(c.baseUrl) !== c.baseUrl || validateKey(c.key) !== c.key || c.name.includes(c.key) || c.baseUrl.includes(c.key) || c.upstreamEnabled !== void 0 && typeof c.upstreamEnabled !== "boolean") throw Error();

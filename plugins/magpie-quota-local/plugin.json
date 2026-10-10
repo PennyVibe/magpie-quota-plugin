@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "magpie-quota-local",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Magpie Gateway key 个人额度看板，本机独立连接管理。",
   "author": {
     "name": "Local Tools"
@@ -17,7 +17,7 @@
       "interface": {
         "displayName": "Magpie 额度看板",
         "shortDescription": "查看个人用量、限额和共享供应商额度",
-        "longDescription": "在本机连接页填写网关地址和 Gateway key，查看个人用量与限额，并可开启共享供应商额度。Key 明文保存在当前用户目录，插件只发起只读查询。",
+        "longDescription": "在本机连接页填写网关地址和 Gateway key，查看个人用量与限额，默认展示共享供应商缓存额度。Key 明文保存在当前用户目录，插件只发起只读查询。",
         "developerName": "Local Tools",
         "category": "Productivity",
         "capabilities": [

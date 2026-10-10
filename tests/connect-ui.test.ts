@@ -36,6 +36,8 @@ test('构建连接页实际表单提交、Key 即时清空、名称安全渲染�
     const ready = () => !document.querySelector<HTMLButtonElement>('button[type=submit]')!.disabled;
     await waitForUI(ready);
     assert.equal(dom.window.location.search, '');
+    assert.equal(document.querySelector('input[type=checkbox]'), null);
+    assert.equal(document.querySelector('button[type=submit]')!.textContent, '保存连接');
     const name = document.querySelector<HTMLInputElement>('[name=name]')!, address = document.querySelector<HTMLInputElement>('[name=address]')!, key = document.querySelector<HTMLInputElement>('[name=key]')!;
     name.value = '<img src=x> Alpha'; address.value = `${remote.origin}/gateway`; key.value = keyA;
     document.querySelector('form')!.dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
@@ -44,6 +46,9 @@ test('构建连接页实际表单提交、Key 即时清空、名称安全渲染�
     assert.match(document.getElementById('connections')!.textContent!, /Alpha/);
     assert.equal(document.querySelector('img'), null);
     assert.equal((await t.store.read()).connections[0].baseUrl, `${remote.origin}/gateway/v1`);
+    assert.equal((await t.store.read()).connections[0].upstreamEnabled, undefined);
+    assert.ok([...document.querySelectorAll<HTMLButtonElement>('#connections button')].find(b => b.textContent === '正在使用')?.disabled);
+    assert.doesNotMatch(document.getElementById('connections')!.textContent!, /开启共享|关闭共享/);
     assert.ok(!document.documentElement.innerHTML.includes(keyA)); assert.deepEqual(logs, []);
     const remove = [...document.querySelectorAll<HTMLButtonElement>('#connections button')].find(b => b.textContent === '移除连接')!;
     remove.click();

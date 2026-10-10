@@ -1,6 +1,6 @@
 # Magpie 额度看板
 
-本地 STDIO MCP 插件，ID 为 `magpie-quota-local`。用户在本机浏览器连接页填写服务器地址与服务器分配的 Gateway key；看板只读远端 Magpie 的个人额度，以及用户开启后的共享供应商缓存卡片。看板不展示或自动读取可用模型；保留独立的 `list_available_models` 工具供主动查询。本机不需要安装 Magpie，不需要远端后台登录 Key、供应商 Key 或 SSH。
+本地 STDIO MCP 插件，ID 为 `magpie-quota-local`。用户在本机浏览器连接页填写服务器地址与服务器分配的 Gateway key；看板只读远端 Magpie 的个人额度、所选时间范围的个人模型用量，以及默认展示的共享供应商缓存卡片。看板不展示或自动读取可用模型；保留独立的 `list_available_models` 工具供主动查询。本机不需要安装 Magpie，不需要远端后台登录 Key、供应商 Key 或 SSH。
 
 ## 从 GitHub 添加市场
 
@@ -56,7 +56,7 @@ npm run local:package
 npm run local:verify
 ```
 
-构建产物为 `dist/local/`。本地插件来源为 `dist/local-plugin/plugins/magpie-quota-local/`，包含 portable manifest、Codex 兼容 manifest、两份 MCP 配置、自包含 JavaScript 和图标；`dist/local-plugin` 另含本地 marketplace 索引。macOS 生成 `dist/Magpie-0.1.0-Mac-Apple-Silicon.tar.gz` 或 `Mac-Intel.tar.gz`，Windows 构建生成 `Windows-x64.zip`。归档中保留隐藏文件。不包含 node_modules、源码测试或任何已保存连接。
+构建产物为 `dist/local/`。本地插件来源为 `dist/local-plugin/plugins/magpie-quota-local/`，包含 portable manifest、Codex 兼容 manifest、两份 MCP 配置、自包含 JavaScript 和图标；`dist/local-plugin` 另含本地 marketplace 索引。macOS 生成 `dist/Magpie-0.1.1-Mac-Apple-Silicon.tar.gz` 或 `Mac-Intel.tar.gz`，Windows 构建生成 `Windows-x64.zip`。归档中保留隐藏文件。不包含 node_modules、源码测试或任何已保存连接。
 
 这些构建命令不会安装到宿主、注册 marketplace、创建 Git 提交、推送或发布。除了 GitHub 市场，也可使用宿主支持的本地来源流程。需要手工 STDIO 配置时，命令为 `node`，参数为解包目录中 `magpie-quota-local/server/launch.cjs` 的绝对路径。
 
@@ -64,8 +64,8 @@ npm run local:verify
 
 1. 在宿主的插件 global 入口打开「Magpie 额度看板」，或请求 `open_quota_dashboard`。
 2. 点击「连接管理」，插件请求在本机默认浏览器打开受保护的连接页。若系统未打开，使用面板提供的链接在这台电脑的浏览器打开。
-3. 自行填写连接名称、远端地址、Gateway key。点击「验证 /limit 并保存连接」。验证成功才保存；连接时不会读取模型或共享账号信息。
-4. 可勾选「开启共享供应商额度展示」，或在已保存连接上点击开启并确认共享范围。开关按连接分别保存，默认关闭，关闭后不读取共享接口。
+3. 自行填写连接名称、远端地址、Gateway key。点击「保存连接」。验证成功才保存；连接时不会读取模型或共享账号信息。
+4. 共享供应商额度默认展示，无需勾选或开启。新旧连接均只读取服务器缓存卡片；此数据可覆盖多个账号，不代表当前 Key 的个人用量。
 5. 返回面板，点击「完成，读取当前连接」。之后可在连接管理中查看保存的连接、切换连接或移除连接及 Key。移除当前连接后不会自动选择另一个连接。
 
 地址允许 HTTP 和 HTTPS，保持输入协议。地址规范化到 OpenAI Base URL：
@@ -90,15 +90,17 @@ Token 和估算费用各自展示上限、已用、剩余与进度。Token 使�
 
 Token 与费用的上限分别可选，用量展示不由是否设置上限决定。只设置 Token 上限时，费用上限与剩余显示「未设限」；只设置费用上限时，Token 同样处理。未设限的维度不生成额度进度；服务器仍返回用量时保留显示，缺失用量则显示「未提供」。
 
-两个上限均未配置时，仍保留 Token 与估算费用的用量区域，并独立显示「未设置限额」。截至补充核对的公开源码 `27e69702e1a6c150622377a1bc48229376375bc8`，`/limit` 对此 Key 只返回 `limited:false` 与名称，网关没有独立的个人用量查询接口。页面因此显示「用量暂不可读取」，不把用量填零、不猜统计窗口。Web 后台 `/api/usage` 使用另一套 Web 登录认证，并包含服务器汇总及其他 Key 数据，不能作为当前 Gateway key 的个人用量来源。本地插件无法单方面提供完全不限额 Key 的真实个人用量；需要远端支持相应的只读接口，本次不修改远端。
+两个上限均未配置时，仍保留 Token 与估算费用区域并显示「未设置限额」；`/limit` 不提供此 Key 的预算窗口用量。模型用量由新增的网关只读接口单独获取，支持今天、近 7 天、近 30 天和全部，默认今天；范围由服务器时区解释，页面绝对时间统一转为北京时间。概览展示总 Token、估算费用、调用数和各模型的 Token 占比，以静态表格展示模型、调用数、Token、费用与占比，支持按 Token / 金额排序，不提供模型点击展开或细分面板。宽屏下个人限额与共享供应商额度并排，连接信息使用紧凑横栏。统计只包含网关调用，Token 合计包含缓存读写，可能与限额的配置口径不同。
 
-401、403、接口不支持（404/405/501）、超时、不可达、无效 JSON、未知契约分别返回固定安全错误。404 也可能是部署路径错误，不能仅凭 404 确认版本过旧。一个来源失败不妨碍另一个来源显示；同一连接的失败可保留上次成功数据，但标明过期和原成功读取时间。连接切换会清空所有缓存。接口缺失不会降级成“无限额”。
+截至官方源码 `8d95ebc8c307b4363f6731b688b1014a1958524d`，有预算、模型或账号限制的 Key 会被服务器强制隔离到自身调用。完全未受限的 Key 可读全服务器统计，接口没有安全的当前 Key ID 来源；插件显示「无法确认个人统计范围」，不拿全局或共享统计补值，不按可能重名的 Key 名称猜身份。旧服务器不支持新用量接口时仅该区域不可用。真实无调用显示「今天暂无调用」，缺失数值仍为未知。
+
+401、403、接口不支持（404/405/501）、超时、不可达、无效 JSON、未知契约分别返回固定安全错误。404 也可能是部署路径错误，不能仅凭 404 确认版本过旧。一个来源失败不妨碍另一个来源显示；同一连接的失败可保留上次成功数据，但标明未更新状态。连接切换会清空所有缓存。接口缺失不会降级成“无限额”。
 
 Magpie 的 loopback 路径可能接受无效 Key，却返回 `limited:false,key:""`。插件拒绝把无 Key 归属的结果当成个人无限额；请使用能够识别该 Gateway key 的网关连接路径。
 
-开启后，供应商共享额度区域和 `get_upstream_quota_cards` 只读取 `/v1/magpie/quotas/cards`。已核对源码的 `/quotas` 与 `/quotas/cards` 不按此 Key 的账号权限过滤，可能覆盖多个账号。插件不转发 `user`、原始错误、供应商 Key 或额外管理字段，使用卡片序号区分供应商多卡片。窗口 `used` 为百分比，剩余比例按已确认的 `max(0,100-used)` 规则计算；真实 0 正常显示，缺失/无效比例不填零。显示服务器 `readAt/asOf` 与带偏移的 `resetsAt`；只有相对 `resetSecs` 时保留原值，不按本机时间猜绝对重置时刻。服务器的余额原文单独标为共享供应商报告，不当作个人充值余额。
+供应商共享额度区域默认展示，与 `get_upstream_quota_cards` 均只读取 `/v1/magpie/quotas/cards`。已核对源码的 `/quotas` 与 `/quotas/cards` 不按此 Key 的账号权限过滤，可能覆盖多个账号。插件不转发 `user`、原始错误、供应商 Key 或额外管理字段，使用卡片序号区分供应商多卡片。窗口 `used` 为百分比，剩余比例按已确认的 `max(0,100-used)` 规则计算；真实 0 正常显示，缺失/无效比例不填零。不展示接口与供应商数据读取时间；将 `resetsAt` 转为北京时间显示；只有相对 `resetSecs` 时保留原值，不按本机时间猜绝对重置时刻。服务器的余额使用 Credits 标签，数字末尾的 credits 单位不重复显示。
 
-`/quotas/cards` 返回空列表表示服务器尚无缓存卡片；需要服务器自身先读取供应商数据。插件不主动调用供应商。共享接口不支持、失败或没有数据时个人看板仍可用；不会 fallback 到可能问供应商的 `/quotas`，也不会发送 POST refresh。没有按当前 Key 隔离的已核实历史聚合接口，因此不提供近 7/30 日历史、请求数统计或模型费用分布。不包含推理、配额重置、Key 管理和 POST 供应商刷新。
+`/quotas/cards` 返回空列表表示服务器尚无缓存卡片；需要服务器自身先读取供应商数据。插件不主动调用供应商。共享接口不支持、失败或没有数据时个人看板仍可用；不会 fallback 到可能问供应商的 `/quotas`，也不会发送 POST refresh。模型用量支持今天、近 7 天、近 30 天和全部，不提供趋势图或请求明细。不包含推理、配额重置、Key 管理和 POST 供应商刷新。
 
 ## 凭证与本机边界
 
@@ -117,7 +119,8 @@ Gateway key 仅由本机浏览器输入并提交给插件后台，模型工具�
 
 ## 开发文件与验收
 
-- `lib/gateway.ts`：固定 GET allowlist（limit、models、quotas/cards）、地址规则、安全错误、真实契约解析。
+- `lib/gateway.ts`：固定 GET allowlist（limit、models、quotas/cards 与固定参数 usage 范围探测 / usage/requests）、地址规则、安全错误、真实契约解析。
+- `lib/usage.ts`：个人范围确认与小规模汇总投影，排除账号、会话、请求行和路径。
 - `local/`：独立持久存储、连接管理、后台与两平台启动器。
 - `widget/`：全屏 App，`autoResize:false`、刷新与生命周期处理。
 - `generated/`：构建生成的自包含 HTML，不手改压缩产物。
@@ -128,4 +131,4 @@ Gateway key 仅由本机浏览器输入并提交给插件后台，模型工具�
 
 结构参考 Sub2API 项目当前 0.1.20 的本地启动器、浏览器打开、安全连接入口、MCP Apps / global 元数据和构建打包方式；没有复制固定上游、登录续期或管理员重置功能。运行依赖固定为 MCP SDK 1.32.0、MCP Apps 1.7.5、MCP Extensions 0.1.0 与 Zod 4.2.0；不引入 React 或原项目的业务依赖。
 
-模型可见工具均无参数：`open_quota_dashboard`、`get_my_gateway_quota`、`list_available_models`、`get_upstream_quota_cards`。另外两个仅面板可见工具用于本机连接管理和连接版本检查，不接收地址、路径或凭证。
+模型可见工具 `open_quota_dashboard` 仅接受可选 `period` 枚举 `today/7d/30d/all`，默认 `today`；`get_my_gateway_quota`、`list_available_models`、`get_upstream_quota_cards` 均无参数。另外两个仅面板可见工具用于本机连接管理和连接版本检查，不接收地址、路径或凭证。

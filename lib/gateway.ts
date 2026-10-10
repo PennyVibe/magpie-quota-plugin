@@ -1,4 +1,5 @@
 import type { Metric, Problem, Quota, UpstreamCard } from './types';
+import { isUsagePeriod, type UsagePeriod } from './types';
 
 export class GatewayError extends Error {
   constructor(public code: string, message: string) { super(message); }
@@ -84,16 +85,29 @@ export function parseUpstreamCards(value: unknown, key: string): UpstreamCard[] 
 }
 
 /** Closed GET allowlist; every redirect is refused before a second request. */
-export async function readGateway(baseUrl: string, key: string, endpoint: 'limit' | 'models' | 'cards', timeoutMs = 10000): Promise<unknown> {
+export async function readGateway(baseUrl: string, key: string, endpoint: 'limit' | 'models' | 'cards' | 'usageScope' | 'usageRequests', timeoutMs = 10000, period: UsagePeriod = 'today'): Promise<unknown> {
+  if (!isUsagePeriod(period)) throw new GatewayError('usage_period', '请选择支持的用量时间范围。');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const path = { limit: 'magpie/limit', models: 'models', cards: 'magpie/quotas/cards' }[endpoint];
+    const path = { limit: 'magpie/limit', models: 'models', cards: 'magpie/quotas/cards',
+      usageScope: `magpie/usage?period=${period}`, usageRequests: `magpie/usage/requests?period=${period}&via=through&limit=1&offset=0` }[endpoint];
     const response = await fetch(`${baseUrl}/${path}`, {
       method: 'GET', headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },
       redirect: 'manual', signal: controller.signal,
     });
     if (!response.ok) {
+      // 只识别官方固定的隔离范围信号，不向快照传播错误正文。
+      if (endpoint === 'usageScope' && response.status === 403) {
+        try {
+          const body = await readJson(response, 4096);
+          if (object(object(body).error).message === 'this gateway key is held to a budget, models or accounts, so it is told its own calls alone: GET /v1/magpie/usage/requests') {
+            throw new GatewayError('usage_key_scoped', '服务器已确认仅允许读取当前 Key 的调用。');
+          }
+        } catch (error) {
+          if (error instanceof GatewayError && error.code === 'usage_key_scoped') throw error;
+        }
+      }
       await response.body?.cancel();
       const codes: Record<number, [string, string]> = {
         401: ['invalid_key', 'Gateway key 无效、已禁用或被撤销。'],
@@ -107,22 +121,25 @@ export async function readGateway(baseUrl: string, key: string, endpoint: 'limit
       const [code, message] = codes[response.status] ?? ['server_error', '服务器返回错误，请稍后重试。'];
       throw new GatewayError(code, message);
     }
-    const chunks: Uint8Array[] = []; let size = 0;
-    const reader = response.body?.getReader();
-    if (reader) try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        size += value.length;
-        if (size > 2 * 1024 * 1024) throw new GatewayError('contract', '响应超过安全读取大小。');
-        chunks.push(value);
-      }
-    } finally { await reader.cancel().catch(() => {}); }
-    try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); }
-    catch { throw new GatewayError('invalid_json', '服务器没有返回有效 JSON。'); }
+    return await readJson(response, 2 * 1024 * 1024);
   } catch (e) {
     if (e instanceof GatewayError) throw e;
     throw new GatewayError(controller.signal.aborted ? 'timeout' : 'unreachable',
       controller.signal.aborted ? '读取超时，请检查服务器后重试。' : '服务不可达，请检查地址、网络和 TLS 配置。');
   } finally { clearTimeout(timeout); }
+}
+async function readJson(response: Response, maxSize: number): Promise<unknown> {
+  const chunks: Uint8Array[] = []; let size = 0;
+  const reader = response.body?.getReader();
+  if (reader) try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.length;
+      if (size > maxSize) throw new GatewayError('contract', '响应超过安全读取大小。');
+      chunks.push(value);
+    }
+  } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+  try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); }
+  catch { throw new GatewayError('invalid_json', '服务器没有返回有效 JSON。'); }
 }

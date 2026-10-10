@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { GatewayError, normalizeAddress, validateKey } from '../lib/gateway';
 import type { Connection } from '../lib/types';
 
+// 保留旧字段的读取兼容性；共享卡片现在始终展示，不再使用连接开关。
 export type SavedConnection = Connection & { key: string; upstreamEnabled?: boolean };
 type State = { revision: string; activeId: string | null; connections: SavedConnection[] };
 export function dataDirectory() {
@@ -13,7 +14,7 @@ export function dataDirectory() {
     ? join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), 'MagpieQuota')
     : join(homedir(), 'Library', 'Application Support', 'MagpieQuota'));
 }
-export const publicConnection = ({ id, name, baseUrl, upstreamEnabled }: SavedConnection) => ({ id, name, baseUrl, upstreamEnabled: upstreamEnabled === true });
+export const publicConnection = ({ id, name, baseUrl }: SavedConnection) => ({ id, name, baseUrl });
 export class ConnectionStore {
   constructor(readonly directory = dataDirectory()) {}
   async read(): Promise<State> {

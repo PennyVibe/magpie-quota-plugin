@@ -110,18 +110,16 @@ export class ConnectServer {
         await this.store.update(expected, state => {
           this.ensure(a, csrf, res);
           if (state.connections.length >= 50) throw new GatewayError('input', '最多保存 50 个连接。');
-          const id = randomUUID(); state.connections.push({ id, name, baseUrl, key, upstreamEnabled: body.upstreamEnabled === true }); state.activeId = id;
+          const id = randomUUID(); state.connections.push({ id, name, baseUrl, key }); state.activeId = id;
         });
         this.runtime.invalidate(); a.revision = null;
         return this.reply(res, 200, { ok: true, limited: quota.limited });
       }
-      if (!['select', 'remove', 'upstream'].includes(String(body.action)) || typeof body.id !== 'string') throw new GatewayError('input', '操作无效。');
-      if (body.action === 'upstream' && typeof body.enabled !== 'boolean') throw new GatewayError('input', '请明确选择是否展示共享供应商额度。');
+      if (!['select', 'remove'].includes(String(body.action)) || typeof body.id !== 'string') throw new GatewayError('input', '操作无效。');
       await this.store.update(expected, state => {
         this.ensure(a, csrf, res);
         if (!state.connections.some(c => c.id === body.id)) throw new GatewayError('input', '连接已不存在。');
-        if (body.action === 'upstream') state.connections.find(c => c.id === body.id)!.upstreamEnabled = body.enabled as boolean;
-        else if (body.action === 'select') state.activeId = body.id as string;
+        if (body.action === 'select') state.activeId = body.id as string;
         else {
           state.connections = state.connections.filter(c => c.id !== body.id);
           if (state.activeId === body.id) state.activeId = null;

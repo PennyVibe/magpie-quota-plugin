@@ -5,7 +5,7 @@ import { Runtime } from '../local/runtime';
 import { ConnectServer } from '../local/connect-server';
 import { localConnectHtml } from '../generated/local-connect';
 import { renderSnapshot } from '../widget/view';
-import { deferred, json, keyA, keyB, mockServer, quotaFixture, temporaryStore } from './fixtures';
+import { json, keyA, mockServer, quotaFixture, temporaryStore } from './fixtures';
 const cards = { object: 'list', data: [{ provider: 'codex', name: 'Codex', kind: 'subscription', plan: 'Pro',
   user: 'shared-private@example.test', readAt: '2026-10-10T08:00:00Z', windows: [
     { name: '5h', used: 0, resetsAt: '2026-10-10T20:00:00+08:00' },
@@ -27,29 +27,33 @@ test('共享卡片不猜版本字段，负数/非有限百分比未知，真实�
   const data = parseUpstreamCards({ object: 'list', data: [{ ...cards.data[0], windows: [{ name: 'invalid', used: Infinity }, { name: 'invalid', used: -1 }] }] }, keyA);
   assert.equal(data[0].windows[0].usedPercent, null); assert.equal(data[0].windows[1].remainingPercent, null);
 });
-test('未开启共享区域时全部工具路径都不读 cards；连接开关可开启并关闭', async () => {
+test('新旧连接默认读取共享缓存；独立个人额度和模型查询不额外读取 cards', async () => {
   const t = await temporaryStore(), paths: string[] = [];
   const remote = await mockServer((req, res) => {
     paths.push(req.url!); json(res, req.url?.endsWith('cards') ? cards : req.url?.endsWith('models') ? { object: 'list', data: [] } : quotaFixture());
   });
   const runtime = new Runtime(t.store), connector = await new ConnectServer(t.store, runtime, localConnectHtml).start();
   try {
-    const state = await t.store.update('empty', s => { s.connections = [{ id: 'a', name: 'Alpha', baseUrl: `${remote.origin}/v1`, key: keyA }]; s.activeId = 'a'; });
-    await runtime.snapshot('dashboard'); assert.equal((await runtime.snapshot('cards')).upstreamError?.code, 'upstream_disabled');
-    assert.ok(!paths.some(path => path.endsWith('cards')));
+    let state = await t.store.update('empty', s => { s.connections = [{ id: 'a', name: 'Alpha', baseUrl: `${remote.origin}/v1`, key: keyA }]; s.activeId = 'a'; });
+    for (const legacy of [undefined, false, true]) {
+      state = await t.store.update(state.revision, s => { s.connections[0].upstreamEnabled = legacy; });
+      const before = paths.length, dashboard = await runtime.snapshot('dashboard');
+      assert.equal(dashboard.upstreamEnabled, true); assert.equal(dashboard.upstreamCards?.[0].name, 'Codex');
+      assert.equal(dashboard.upstreamError, null);
+      assert.deepEqual(paths.slice(before).sort(), ['/v1/magpie/limit', '/v1/magpie/quotas/cards', '/v1/magpie/usage/requests?period=today&via=through&limit=1&offset=0']);
+      const shared = await runtime.snapshot('cards');
+      assert.equal(shared.upstreamCards?.[0].name, 'Codex');
+    }
+    const after = paths.length;
+    await runtime.snapshot('quota'); await runtime.snapshot('models');
+    assert.deepEqual(paths.slice(after).sort(), ['/v1/magpie/limit', '/v1/models']);
     const entry = await fetch(connector.issueConnectionUrl()), cookie = entry.headers.get('set-cookie')!.split(';')[0];
-    const toggle = async (enabled: boolean) => {
-      const page = await (await fetch(`${connector.origin}/api/connections`, { headers: { Cookie: cookie } })).json();
-      const response = await fetch(`${connector.origin}/api/connections`, { method: 'POST', headers: { Cookie: cookie, Origin: connector.origin, 'X-CSRF-Token': page.csrf, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'upstream', id: 'a', enabled }) });
-      assert.equal(response.status, 200);
-    };
-    await toggle(true); const active = await runtime.snapshot('cards'); assert.equal(active.upstreamCards?.[0].name, 'Codex');
-    assert.notEqual(active.revision, state.revision);
-    await toggle(false); const disabled = await runtime.snapshot('dashboard');
-    assert.equal(disabled.upstreamCards, null); assert.equal(disabled.upstreamReadAt, null); assert.equal(disabled.upstreamEnabled, false);
-    assert.equal(paths.filter(path => path.endsWith('cards')).length, 1);
-    assert.ok(!paths.some(path => path.endsWith('models')));
+    const page = await (await fetch(`${connector.origin}/api/connections`, { headers: { Cookie: cookie } })).json();
+    const response = await fetch(`${connector.origin}/api/connections`, { method: 'POST', headers: { Cookie: cookie, Origin: connector.origin, 'X-CSRF-Token': page.csrf, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'upstream', id: 'a', enabled: false }) });
+    assert.equal(response.status, 400);
+    assert.equal((await t.store.read()).revision, state.revision);
+    assert.equal(page.connections[0].upstreamEnabled, undefined);
   } finally { await connector.close(); await remote.close(); await t.close(); }
 });
 test('cards 接口版本缺失保留个人额度，不 fallback 到其他共享接口', async () => {
@@ -62,28 +66,24 @@ test('cards 接口版本缺失保留个人额度，不 fallback 到其他共享�
     await t.store.update('empty', s => { s.connections = [{ id: 'a', name: 'Alpha', baseUrl: `${remote.origin}/v1`, key: keyA, upstreamEnabled: true }]; s.activeId = 'a'; });
     const result = await new Runtime(t.store).snapshot('dashboard');
     assert.equal(result.quota?.tokens.used, 30); assert.equal(result.upstreamError?.code, 'unsupported'); assert.equal(result.upstreamCards ?? null, null);
-    assert.deepEqual(paths.sort(), ['/v1/magpie/limit', '/v1/magpie/quotas/cards']);
+    assert.deepEqual(paths.sort(), ['/v1/magpie/limit', '/v1/magpie/quotas/cards', '/v1/magpie/usage/requests?period=today&via=through&limit=1&offset=0']);
   } finally { await remote.close(); await t.close(); }
 });
-test('共享卡片失败保留旧时间和 stale；关闭开关后迟到数据不能恢复', async () => {
-  const t = await temporaryStore(); let failure = false, hold = false;
-  const entered = deferred<void>(), release = deferred<void>();
-  const remote = await mockServer(async (_req, res) => { if (hold) { entered.resolve(); await release.promise; } json(res, cards, failure ? 403 : 200); });
+test('共享卡片失败保留旧数据、时间和 stale', async () => {
+  const t = await temporaryStore(); let failure = false;
+  const remote = await mockServer((_req, res) => json(res, cards, failure ? 403 : 200));
   try {
-    const state = await t.store.update('empty', s => { s.connections = [{ id: 'a', name: 'Alpha', baseUrl: `${remote.origin}/v1`, key: keyA, upstreamEnabled: true }]; s.activeId = 'a'; });
+    await t.store.update('empty', s => { s.connections = [{ id: 'a', name: 'Alpha', baseUrl: `${remote.origin}/v1`, key: keyA, upstreamEnabled: true }]; s.activeId = 'a'; });
     const runtime = new Runtime(t.store), success = await runtime.snapshot('cards');
     failure = true; const failed = await runtime.snapshot('cards');
     assert.equal(failed.upstreamReadAt, success.upstreamReadAt); assert.equal(failed.stale, true); assert.equal(failed.upstreamError?.code, 'forbidden');
-    hold = true; failure = false; const pending = runtime.snapshot('cards'); await entered.promise;
-    await t.store.update(state.revision, s => { s.connections[0].upstreamEnabled = false; s.connections[0].key = keyB; });
-    release.resolve(); const retired = await pending;
-    assert.equal(retired.upstreamCards, null); assert.equal(retired.upstreamEnabled, false);
-  } finally { release.resolve(); await remote.close(); await t.close(); }
+    assert.deepEqual(failed.upstreamCards, success.upstreamCards);
+  } finally { await remote.close(); await t.close(); }
 });
-test('共享区域与个人额度标签分离、缓存年龄及缺失值可辨认', () => {
+test('共享区域与个人额度标签分离，隐藏读取时间且保留缺失值', () => {
   const html = renderSnapshot({ revision: 'a', connection: { id: 'a', name: 'Alpha', baseUrl: 'https://example.test/v1' },
     quota: null, models: [], quotaReadAt: null, modelsReadAt: null, quotaError: null, modelsError: null, stale: false,
     upstreamEnabled: true, upstreamCards: parseUpstreamCards(cards, keyA), upstreamReadAt: '2026-10-10T10:00:00Z' });
-  assert.match(html, /服务器缓存 · 非个人用量/); assert.match(html, /剩余 100\.0%/); assert.match(html, /未提供/);
-  assert.match(html, /供应商数据读取时间/); assert.ok(!html.includes('shared-private'));
+  assert.match(html, /服务器缓存/); assert.match(html, /剩余 100\.0%/); assert.match(html, /未提供/);
+  assert.doesNotMatch(html, /供应商数据读取时间|接口最后读取/); assert.ok(!html.includes('shared-private'));
 });

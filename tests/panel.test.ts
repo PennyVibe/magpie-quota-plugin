@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { JSDOM, VirtualConsole } from 'jsdom';
 import { localWidgetHtml } from '../generated/local-widget';
 import { parseQuota } from '../lib/gateway';
-import { quotaFixture } from './fixtures';
+import { quotaFixture, usageFixture, keyA } from './fixtures';
+import { parsePersonalUsage } from '../lib/usage';
 import type { Snapshot } from '../lib/types';
 import { renderSnapshot } from '../widget/view';
 const delay = () => new Promise(resolve => setTimeout(resolve, 25));
@@ -11,6 +12,7 @@ const snapshot: Snapshot = {
   revision: 'alpha-revision', connection: { id: 'a', name: 'Alpha', baseUrl: 'https://gateway.example.test/prefix/v1' },
   quota: parseQuota(quotaFixture()), models: ['provider/model-a'], quotaReadAt: '2026-10-10T10:00:00Z', modelsReadAt: '2026-10-10T10:00:00Z',
   quotaError: null, modelsError: null, stale: false,
+  usage: parsePersonalUsage(usageFixture(), keyA), usageReadAt: '2026-10-10T10:00:00Z', usageError: null,
 };
 function mount(options: { hold?: boolean; hidden?: boolean } = {}) {
   const messages: any[] = [], errors: unknown[] = [], intervals = new Map<number, { callback: () => void; delay: number }>();
@@ -23,7 +25,9 @@ function mount(options: { hold?: boolean; hidden?: boolean } = {}) {
       hostCapabilities: { serverTools: {}, openLinks: {} }, hostContext: { displayMode: 'fullscreen', availableDisplayModes: ['fullscreen'] },
     } });
     if (message.method === 'tools/call') {
-      if (message.params.name === 'open_quota_dashboard') { if (!held) respond({ id: message.id, result: { content: [], structuredContent: current } }); }
+      if (message.params.name === 'open_quota_dashboard') { if (!held) respond({ id: message.id, result: { content: [], structuredContent: {
+        ...current, usage: current.usage ? { ...current.usage, period: message.params.arguments.period ?? 'today' } : null,
+      } } }); }
       else if (message.params.name === 'get_connection_state') respond({ id: message.id, result: { content: [], _meta: { 'magpie/revision': current.revision } } });
       else respond({ id: message.id, result: { content: [], _meta: { 'magpie/connectUrl': `http://127.0.0.1:40123/connect?bootstrap=${'a'.repeat(43)}`, 'magpie/browserOpen': 'requested' } } });
     }
@@ -57,13 +61,63 @@ test('真实 SDK 面板握手、刷新不重叠、60 秒节奏与 autoResize 关
     await delay(); assert.equal(m.calls().length, 1);
     m.tick(60000); m.tick(60000); m.dom.window.document.querySelector<HTMLButtonElement>('#refresh')!.click(); await delay();
     assert.equal(m.calls().length, 1);
-    m.setHeld(false); m.respond({ id: m.calls()[0].id, result: { content: [], structuredContent: snapshot } }); await delay();
+    m.setHeld(false); m.respond({ id: m.calls()[0].id, result: { content: [], structuredContent: { ...snapshot, modelsError: { code: 'unsupported', message: '模型查询专属错误' } } } }); await delay();
     assert.match(m.dom.window.document.body.textContent!, /Alpha/);
+    assert.doesNotMatch(m.dom.window.document.body.textContent!, /当前 Key 可用模型|provider\/model-a|模型查询专属错误/);
     m.tick(60000); await delay(); assert.equal(m.calls().length, 2);
     assert.equal(m.messages.filter(msg => msg.method === 'ui/notifications/size-changed').length, 0);
     assert.equal(m.messages.filter(msg => msg.method === 'ui/request-display-mode').length, 0);
     assert.deepEqual(m.errors, []);
   } finally { m.close(); }
+});
+test('模型概览静态展示，刷新保留排序与焦点，连接管理清空个人统计', async () => {
+  const m = mount();
+  try {
+    await delay(); const document = m.dom.window.document;
+    assert.equal(document.querySelector('[data-usage-period="today"]')!.getAttribute('aria-pressed'), 'true');
+    assert.match(document.querySelector('.usage-total')!.textContent!, /1.90K/);
+    assert.equal(document.querySelector('.usage-model th')!.textContent, 'model-alpha');
+    assert.equal(document.querySelector('button.usage-model, [data-usage-model], #usage-detail'), null);
+    assert.equal(document.querySelectorAll('.usage-overview > div').length, 3);
+    document.querySelector<HTMLButtonElement>('[data-usage-sort="cost"]')!.click();
+    assert.equal(document.querySelector('.usage-model th')!.textContent, 'model-beta');
+    document.querySelector<HTMLElement>('.usage-model th')!.click();
+    assert.equal(document.querySelector('#usage-detail'), null);
+    m.tick(60000); await delay();
+    assert.equal(document.querySelector('[data-usage-sort="cost"]')!.getAttribute('aria-pressed'), 'true');
+    assert.equal(document.querySelector('.usage-model th')!.textContent, 'model-beta');
+    assert.equal((document.activeElement as HTMLButtonElement).dataset.usageSort, 'cost');
+    document.querySelector<HTMLButtonElement>('#manage')!.click(); await delay();
+    assert.doesNotMatch(document.body.textContent!, /model-alpha|model-beta|1.90K/);
+    assert.deepEqual(m.errors, []);
+  } finally { m.close(); }
+});
+test('窗口获焦只核对本机连接，首次排序点击不触发额外远端读取', async () => {
+  const m = mount();
+  try {
+    await delay(); const before = m.calls().length;
+    m.dom.window.dispatchEvent(new m.dom.window.Event('focus'));
+    m.dom.window.document.querySelector<HTMLButtonElement>('[data-usage-sort="cost"]')!.click();
+    await delay();
+    assert.equal(m.calls().length, before);
+    assert.equal(m.dom.window.document.querySelector('[data-usage-sort="cost"]')!.getAttribute('aria-pressed'), 'true');
+    assert.equal(m.dom.window.document.querySelector('.usage-model th')!.textContent, 'model-beta');
+  } finally { m.close(); }
+});
+test('用量区域区分未知、真实空数据和过期；模型名转义，不伪造占比', () => {
+  const usage = parsePersonalUsage(usageFixture(), keyA);
+  usage.models[0].id = '<img src=x onerror=alert(1)>';
+  usage.totals.tokens = null; usage.totals.cost = null;
+  const dom = new JSDOM(renderSnapshot({ ...snapshot, usage, usageError: { code: 'timeout', message: '超时' } }));
+  try {
+    assert.equal(dom.window.document.querySelector('img,script'), null);
+    assert.match(dom.window.document.querySelector('.model-usage')!.textContent!, /已过期|占比未知|未提供/);
+    assert.equal(dom.window.document.querySelector('.model-share .track'), null);
+  } finally { dom.window.close(); }
+  const empty = parsePersonalUsage({ ...usageFixture(), calls: 0, input: 0, output: 0, cache_read: 0, cache_write: 0, cost: 0, unpriced: 0, total: 0, rows: [], by: { model: [] } }, keyA);
+  assert.match(renderSnapshot({ ...snapshot, usage: empty }), /今天暂无用量/);
+  const missing = renderSnapshot({ ...snapshot, usage: null, usageError: { code: 'unsupported', message: '旧服务器不支持' } });
+  assert.match(missing, /旧服务器不支持/); assert.doesNotMatch(missing, /今天暂无用量/);
 });
 test('隐藏时停止刷新，隐藏中挂载不读取；恢复可见后才读取', async () => {
   const m = mount({ hidden: true });
@@ -84,7 +138,7 @@ test('连接管理立即清空视图，迟到旧额度不能重新显示', async
     assert.doesNotMatch(m.dom.window.document.body.textContent!, /Alpha|model-a/);
     m.respond({ id: pending.id, result: { content: [], structuredContent: snapshot } }); await delay();
     assert.doesNotMatch(m.dom.window.document.body.textContent!, /Alpha|model-a/);
-    m.setHeld(false); m.change({ ...snapshot, revision: 'beta', connection: { ...snapshot.connection!, name: 'Beta' }, models: ['beta/model'] });
+    m.setHeld(false); m.change({ ...snapshot, revision: 'beta', connection: { ...snapshot.connection!, name: 'Beta' }, models: ['beta/model'], usage: null });
     m.dom.window.document.querySelector<HTMLButtonElement>('#return')!.click(); await delay();
     assert.match(m.dom.window.document.body.textContent!, /Beta/); assert.doesNotMatch(m.dom.window.document.body.textContent!, /Alpha|model-a/);
   } finally { m.close(); }
@@ -119,12 +173,8 @@ test('渲染保留真实零值、标明缺失/过期/估算费用，并转义服
   try {
     assert.equal(dom.window.document.querySelector('img,script'), null);
     assert.match(dom.window.document.body.textContent!, /0已用/); assert.match(dom.window.document.body.textContent!, /未提供/);
-    assert.match(dom.window.document.body.textContent!, /估算费用/); assert.match(dom.window.document.body.textContent!, /已过期/);
+    assert.match(dom.window.document.body.textContent!, /估算费用/); assert.match(dom.window.document.body.textContent!, /显示上次数据/);
   } finally { dom.window.close(); }
-});
-test('看板不展示模型列表，也不显示与独立模型查询有关的失败状态', () => {
-  const html = renderSnapshot({ ...snapshot, modelsError: { code: 'unsupported', message: '模型查询专属错误' } });
-  assert.doesNotMatch(html, /当前 Key 可用模型|provider\/model-a|模型查询专属错误/);
 });
 test('Token 的已用、上限和剩余按 K/M/B 两位小数显示，完整值和费用精度保留', () => {
   for (const [used, expected, progress] of [[0, '0', '0.0'], [999, '999', '0.0'], [1000, '1.00K', '0.0'],
@@ -165,11 +215,56 @@ test('Token 与费用上限分别可选，未设限不显示零余额或虚构�
   }
   const dom = new JSDOM(renderSnapshot({ ...snapshot, quota: parseQuota({ limited: false, key: 'Synthetic' }) }));
   try {
-    assert.match(dom.window.document.body.textContent!, /当前 Gateway key 未设置限额/);
+    assert.match(dom.window.document.body.textContent!, /未设置限额/);
     assert.equal(dom.window.document.querySelectorAll('.metric').length, 2);
     assert.deepEqual([...dom.window.document.querySelectorAll('.used')].map(el => el.textContent), ['未提供已用', '未提供已用']);
     assert.deepEqual([...dom.window.document.querySelectorAll('.metric dd')].map(el => el.textContent), ['未设限', '未设限', '未设限', '未设限']);
-    assert.match(dom.window.document.body.textContent!, /用量暂不可读取/);
+    assert.equal(dom.window.document.querySelector('.quota-card .notice'), null);
     assert.equal(dom.window.document.querySelector('.track div, #countdown'), null);
   } finally { dom.window.close(); }
+});
+test('所有可见时间转为北京时间并保留原始瞬间，移除三处读取时间', () => {
+  const start = '2026-10-04T16:00:00.123456789Z';
+  const dom = new JSDOM(renderSnapshot({ ...snapshot, upstreamEnabled: false, upstreamCards: [{
+    provider: 'codex', name: 'Codex', kind: 'subscription', plan: null, cardNumber: 1, balance: '62483.16 credits',
+    readAt: '2026-10-10T09:00:00Z', asOf: null, unavailable: false,
+    windows: [{ name: '7 days', usedPercent: 25, remainingPercent: 75, unlimited: false, reset: '2026-10-14T03:45:00Z',
+      resetSeconds: null, amount: null, limit: null, unit: null }],
+  }],
+    quota: { ...snapshot.quota!, start, reset: '2026-10-11T09:00:00-07:00' } }));
+  try {
+    const time = dom.window.document.querySelector<HTMLTimeElement>('.time-details time')!;
+    assert.equal(time.dateTime, start);
+    assert.equal(time.textContent, '2026-10-05 00:00:00 北京时间');
+    assert.equal(dom.window.document.querySelectorAll('.time-details time')[1].textContent, '2026-10-12 00:00:00 北京时间');
+    assert.equal(dom.window.document.querySelector('.connection-read time')!.textContent, '2026-10-10 18:00:00 北京时间');
+    assert.equal(dom.window.document.querySelector('.window-reset time')!.textContent, '2026-10-14 11:45:00 北京时间');
+    assert.equal(dom.window.document.querySelector('.balance')!.textContent, 'Credits：62483.16');
+    assert.doesNotMatch(dom.window.document.body.textContent!, /接口最后读取|供应商数据读取时间|最后读取|UTC|服务器时区/);
+    assert.match(dom.window.document.querySelector('.shared')!.textContent!, /服务器缓存/);
+    assert.doesNotMatch(dom.window.document.body.textContent!, /尚未开启|明确开启/);
+  } finally { dom.window.close(); }
+});
+test('时间范围切换立即清空旧统计，丢弃迟到响应并保留选择刷新', async () => {
+  const m = mount();
+  try {
+    await delay(); const document = m.dom.window.document;
+    m.setHeld(true);
+    document.querySelector<HTMLButtonElement>('[data-usage-period="7d"]')!.click(); await delay();
+    const week = m.calls().at(-1);
+    assert.equal(week.params.arguments.period, '7d');
+    assert.doesNotMatch(document.querySelector('.model-usage')!.textContent!, /model-alpha|1.90K/);
+    document.querySelector<HTMLButtonElement>('[data-usage-period="30d"]')!.click(); await delay();
+    m.respond({ id: week.id, result: { content: [], structuredContent: { ...snapshot, usage: { ...snapshot.usage!, period: '7d' } } } }); await delay();
+    const month = m.calls().at(-1);
+    assert.equal(month.params.arguments.period, '30d');
+    assert.doesNotMatch(document.querySelector('.model-usage')!.textContent!, /model-alpha|1.90K/);
+    m.respond({ id: month.id, result: { content: [], structuredContent: { ...snapshot, usage: { ...snapshot.usage!, period: '30d' } } } }); await delay();
+    assert.match(document.querySelector('.model-usage')!.textContent!, /model-alpha/);
+    assert.equal(document.querySelector('[data-usage-period="30d"]')!.getAttribute('aria-pressed'), 'true');
+    assert.equal((document.activeElement as HTMLButtonElement).dataset.usagePeriod, '30d');
+    m.setHeld(false); m.tick(60000); await delay();
+    assert.equal(m.calls().at(-1).params.arguments.period, '30d');
+    assert.equal(document.querySelector('[data-usage-period="30d"]')!.getAttribute('aria-pressed'), 'true');
+  } finally { m.close(); }
 });

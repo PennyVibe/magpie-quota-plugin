@@ -14,6 +14,18 @@ export type UpstreamCard = {
   provider: string; name: string; kind: string; plan: string | null; cardNumber: number;
   windows: UpstreamWindow[]; balance: string | null; readAt: string | null; asOf: string | null; unavailable: boolean;
 };
+export type UsageTotals = {
+  calls: number | null; input: number | null; output: number | null;
+  cacheRead: number | null; cacheWrite: number | null; tokens: number | null;
+  cost: number | null; unpriced: number | null;
+};
+export const usagePeriods = ['today', '7d', '30d', 'all'] as const;
+export type UsagePeriod = typeof usagePeriods[number];
+export const isUsagePeriod = (value: unknown): value is UsagePeriod => usagePeriods.some(period => period === value);
+export type PersonalUsage = {
+  period: UsagePeriod; scope: 'current-key'; source: 'through';
+  totals: UsageTotals; models: (UsageTotals & { id: string })[];
+};
 export type Snapshot = {
   revision: string; connection: Connection | null;
   quota: Quota | null; models: string[] | null;
@@ -21,4 +33,5 @@ export type Snapshot = {
   quotaError: Problem | null; modelsError: Problem | null;
   stale: boolean;
   upstreamEnabled?: boolean; upstreamCards?: UpstreamCard[] | null; upstreamReadAt?: string | null; upstreamError?: Problem | null;
+  usage?: PersonalUsage | null; usageReadAt?: string | null; usageError?: Problem | null;
 };

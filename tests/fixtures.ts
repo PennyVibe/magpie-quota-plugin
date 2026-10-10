@@ -10,6 +10,16 @@ export const quotaFixture = (overrides: Record<string, unknown> = {}) => ({
     tokens: 30, cost: 0.125, tokenLimit: 100, costLimit: 2, tokensLeft: 70, costLeft: 1.875, spent: false, ...overrides,
   },
 });
+export const usageFixture = () => {
+  const totals = { calls: 3, errors: 0, input: 1000, output: 200, cache_read: 600, cache_write: 100,
+    cache_write_1h: 50, reasoning: 80, cost: .25, unpriced: 1 };
+  return { ...totals, period: 'today', offset: 0, total: 3, rows: [{ account: 'private-account', session: 'private-session', error: keyA }],
+    through: totals, direct: { ...totals, input: 99999 }, callerKeys: [{ id: 'private-key-id', name: 'Private name' }],
+    accounts: [{ id: 'private-account' }], by: { model: [
+      { id: 'model-alpha', ...totals, calls: 2, input: 800, output: 150, cache_read: 500, cache_write: 100, cost: .1 },
+      { id: 'model-beta', ...totals, calls: 1, input: 200, output: 50, cache_read: 100, cache_write: 0, cost: .15, unpriced: 0 },
+    ] } };
+};
 export function deferred<T>() {
   let resolve!: (v: T) => void;
   const promise = new Promise<T>(r => { resolve = r; });

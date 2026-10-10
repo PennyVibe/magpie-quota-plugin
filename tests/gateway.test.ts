@@ -50,16 +50,19 @@ test('模型仅提取 ID，过滤凭证回显且不复制共享元数据', () =>
   ] }, keyA), ['provider/model-a']);
   assert.throws(() => parseModels({ data: [] }, keyA), GatewayError);
 });
-for (const [status, code] of [[401, 'invalid_key'], [403, 'forbidden'], [404, 'unsupported'], [405, 'unsupported'], [501, 'unsupported'], [429, 'rate_limited'], [500, 'server_error']] as const) {
-  test(`HTTP ${status} 使用固定安全错误且丢弃上游响应正文`, async () => {
-    const server = await mockServer((_req, res) => json(res, { error: `${keyA} private@example.test` }, status));
-    try {
+test('HTTP 错误映射使用固定安全消息，丢弃上游响应正文', async () => {
+  let status = 200;
+  const server = await mockServer((_req, res) => json(res, { error: `${keyA} private@example.test` }, status));
+  try {
+    for (const [next, code] of [[401, 'invalid_key'], [403, 'forbidden'], [404, 'unsupported'], [405, 'unsupported'], [501, 'unsupported'], [429, 'rate_limited'], [500, 'server_error']] as const) {
+      status = next;
       await assert.rejects(readGateway(`${server.origin}/v1`, keyA, 'limit'), (e: GatewayError) => {
-        assert.equal(e.code, code); assert.ok(!e.message.includes(keyA)); assert.ok(!e.message.includes('private')); return true;
+        assert.equal(e.code, code, `HTTP ${status}`);
+        assert.ok(!e.message.includes(keyA) && !e.message.includes('private'), `HTTP ${status} 泄露响应正文`); return true;
       });
-    } finally { await server.close(); }
-  });
-}
+    }
+  } finally { await server.close(); }
+});
 test('实际 HTTP 请求只读并保留部署路径与 Bearer；模型同样保留前缀', async () => {
   const paths: string[] = [];
   const server = await mockServer((req, res) => {

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -16,8 +16,14 @@ const client = new Client({ name: 'magpie-package-verification', version: '1.0.0
 let remote;
 try {
   await client.connect(transport);
-  assert.equal(client.getServerVersion()?.name, 'Magpie 额度看板'); assert.equal(client.getServerVersion()?.version, '0.1.1');
+  assert.equal(client.getServerVersion()?.name, 'Magpie 额度看板'); assert.equal(client.getServerVersion()?.version, '0.1.2');
   const tools = (await client.listTools()).tools;
+  const icons = client.getServerVersion()?.icons;
+  assert.equal(icons?.length, 1);
+  assert.equal(icons[0].mimeType, 'image/svg+xml');
+  assert.deepEqual(icons[0].sizes, ['any']);
+  assert.ok(icons[0].src.startsWith('data:image/svg+xml,'));
+  assert.equal(decodeURIComponent(icons[0].src.slice('data:image/svg+xml,'.length)), await readFile(join(dirname(entry), '../assets/icon.svg'), 'utf8'));
   assert.deepEqual(tools.map(t => t.name), ['open_quota_dashboard', 'get_my_gateway_quota', 'list_available_models', 'get_upstream_quota_cards', 'manage_connections', 'get_connection_state']);
   assert.deepEqual(tools[0]._meta?.['openai/ui']?.entrypoints, [{ type: 'global' }]);
   for (const tool of tools) {
@@ -109,7 +115,7 @@ try {
   assert.ok(!JSON.stringify(shared).includes(synthetic));
   assert.ok(!JSON.stringify(shared).includes('synthetic-private'));
   assert.equal(stderr, '');
-  console.log(JSON.stringify({ ok: true, entry, version: '0.1.1', tools: tools.length, globalFullscreen: true,
+  console.log(JSON.stringify({ ok: true, entry, version: '0.1.2', tools: tools.length, globalFullscreen: true, sidebarIconMetadata: true,
     noCredentials: true, syntheticBrowserConnection: true, prefixAndKeyRoundtrip: true, keyExcludedFromProtocol: true, sharedQuotaDefault: true,
     personalUsageRanges: true, usageMetadataExcluded: true, closedArguments: true, hostMetadataIsolated: true, stderrBytes: 0 }, null, 2));
 } finally {

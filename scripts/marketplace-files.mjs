@@ -5,8 +5,8 @@ import path from 'node:path';
 export const pluginName = 'magpie-quota-local';
 export const catalogFile = '.agents/plugins/marketplace.json';
 export const runtimeFiles = ['server.mjs', 'launch.cjs', 'runtime-support.cjs', 'runtime.json', 'THIRD_PARTY_NOTICES.txt'];
-export const generatedFiles = ['README.md', 'docs/upstream-contract.md', 'docs/validation.md', ...runtimeFiles.map(file => `server/${file}`)];
-export const templateFiles = [catalogFile, '.gitignore', '.gitattributes', 'README.md'];
+export const generatedFiles = ['README.md', 'docs/upstream-contract.md', 'docs/validation.md', 'docs/dashboard-preview.png', ...runtimeFiles.map(file => `server/${file}`)];
+export const templateFiles = [catalogFile, '.gitignore', '.gitattributes', 'README.md', 'docs/dashboard-preview.png'];
 export const pluginFiles = ['plugin.json', 'mcp.json', '.codex-plugin/plugin.json', '.mcp.json', 'assets/icon.svg', ...generatedFiles];
 
 export async function listFiles(directory, prefix = '') {

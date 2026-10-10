@@ -27,7 +27,7 @@ if (!uiOnly) {
   // 每次只保留当前平台的产物，避免跨平台打包时混入旧 helper。
   await rm('dist/local', { recursive: true, force: true });
   await mkdir('dist/local', { recursive: true });
-  const result = await build({ entryPoints: ['local/main.ts'], outfile: 'dist/local/server.mjs', bundle: true, platform: 'node', format: 'esm', target: 'node22', minify: false, sourcemap: false, metafile: true, banner: { js: "#!/usr/bin/env node\nimport { createRequire as __createRequire } from 'node:module';const require = __createRequire(import.meta.url);" } });
+  const result = await build({ entryPoints: ['local/main.ts'], outfile: 'dist/local/server.mjs', bundle: true, platform: 'node', format: 'esm', target: 'node22', minify: false, sourcemap: false, metafile: true, loader: { '.svg': 'text' }, banner: { js: "#!/usr/bin/env node\nimport { createRequire as __createRequire } from 'node:module';const require = __createRequire(import.meta.url);" } });
   const external = Object.values(result.metafile.outputs).flatMap(output => output.imports).filter(item => item.external && !isBuiltin(item.path));
   if (external.length) throw Error(`Local bundle contains runtime dependencies: ${external.map(item => item.path).join(', ')}`);
   const packageDirectories = new Set();

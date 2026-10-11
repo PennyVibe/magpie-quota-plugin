@@ -4,8 +4,9 @@ import { isUsagePeriod, type Snapshot } from '../lib/types';
 import { PanelController } from './controller';
 import { countdown, escape, renderSnapshot, type UsageViewState } from './view';
 import { brandMark } from '../lib/brand';
+import { icon } from './icons';
 const root = document.getElementById('app')!;
-const app = window.parent !== window ? new App({ name: 'Magpie 额度看板', version: '0.1.3' },
+const app = window.parent !== window ? new App({ name: 'Magpie 额度看板', version: '0.1.4' },
   { availableDisplayModes: ['fullscreen'] }, { autoResize: false }) : null;
 if (app) new OpenAIExtensions(app);
 let alive = true, ready = false, busy = false, managing = false, transportError = false, snapshot: Snapshot | null = null;
@@ -29,7 +30,7 @@ function isSnapshot(v: unknown): v is Snapshot {
 function render() {
   const focused = document.activeElement instanceof HTMLButtonElement ? document.activeElement : null;
   const focusId = focused?.id, focusSort = focused?.dataset.usageSort, focusPeriod = focused?.dataset.usagePeriod;
-  root.innerHTML = `<header class="dashboard-header"><div class="brand">${brandMark}<h1>Magpie 额度看板</h1></div><div class="actions"><button id="refresh" ${!ready || busy || managing ? 'disabled' : ''}>${busy ? '读取中…' : '刷新'}</button><button id="manage" class="primary" ${!ready || managing ? 'disabled' : ''}>连接管理 <span aria-hidden="true">↗</span></button></div></header>
+  root.innerHTML = `<header class="dashboard-header"><div class="brand">${brandMark}<h1>Magpie 额度看板</h1></div><div class="actions"><button id="refresh" ${!ready || busy || managing ? 'disabled' : ''}>${icon('refresh')}${busy ? '读取中…' : '刷新'}</button><button id="manage" ${!ready || managing ? 'disabled' : ''}>${icon('manage')}连接管理</button></div></header>
     ${!app ? '<div class="notice">请从 Magpie 插件的全屏入口打开看板。</div>' : ''}
     ${note ? `<div class="notice" role="status">${escape(note)}${connectUrl && managing ? `<p><a href="${escape(connectUrl)}" target="_blank" rel="noopener noreferrer">在本机浏览器打开连接页</a></p>` : ''}</div>` : ''}
     ${managing ? '<div class="empty"><h2>正在管理连接</h2><p>完成后读取当前连接。</p><button id="return">完成，读取当前连接</button></div>' : renderSnapshot(snapshot, transportError, usageState)}`;

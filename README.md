@@ -61,4 +61,12 @@ npm run marketplace:verify
 
 界面预览：构建后运行 `npm run ui:preview`，打开终端输出的地址。预览使用合成数据，不保存连接、不访问真实网关。测试同样只使用合成 Key / mock；真实宿主、远端服务和 Windows 实机需另行验证。
 
+真实数据开发预览：
+
+```sh
+npm run ui:dev
+```
+
+打开终端输出的完整地址。入口读取插件已保存的当前连接，监听 `widget/`、`local/`、`lib/` 和插件图标的代码变更；保存后自动重建后台并刷新浏览器，无需手动运行 build。构建失败时保留上一版页面，修复保存后自动恢复。开发产物写入独立临时目录，不覆盖 `generated/`、`dist/` 或已安装插件。停止服务按 `Ctrl+C`；添加或切换连接仍从已安装插件的「连接管理」进入。
+
 详细说明见 [接口契约](docs/upstream-contract.md) 和 [验证记录](docs/validation.md)。

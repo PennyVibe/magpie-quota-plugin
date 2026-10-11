@@ -92,17 +92,17 @@ test('模型概览静态展示，刷新保留排序与焦点，连接管理清�
   try {
     await delay(); const document = m.dom.window.document;
     assert.equal(document.querySelector('[data-usage-period="today"]')!.getAttribute('aria-pressed'), 'true');
-    assert.match(document.querySelector('.usage-total')!.textContent!, /1.90K/);
-    assert.equal(document.querySelector('.usage-model th')!.textContent, 'model-alpha');
+    assert.match(document.querySelector('.usage-stat-tokens .usage-total')!.textContent!, /1.90K/);
+    assert.equal(document.querySelector('.model-name')!.textContent, 'model-alpha');
     assert.equal(document.querySelector('button.usage-model, [data-usage-model], #usage-detail'), null);
     assert.equal(document.querySelectorAll('.usage-overview > div').length, 3);
     document.querySelector<HTMLButtonElement>('[data-usage-sort="cost"]')!.click();
-    assert.equal(document.querySelector('.usage-model th')!.textContent, 'model-beta');
-    document.querySelector<HTMLElement>('.usage-model th')!.click();
+    assert.equal(document.querySelector('.model-name')!.textContent, 'model-beta');
+    document.querySelector<HTMLElement>('.model-name')!.click();
     assert.equal(document.querySelector('#usage-detail'), null);
     m.tick(60000); await delay();
     assert.equal(document.querySelector('[data-usage-sort="cost"]')!.getAttribute('aria-pressed'), 'true');
-    assert.equal(document.querySelector('.usage-model th')!.textContent, 'model-beta');
+    assert.equal(document.querySelector('.model-name')!.textContent, 'model-beta');
     assert.equal((document.activeElement as HTMLButtonElement).dataset.usageSort, 'cost');
     document.querySelector<HTMLButtonElement>('#manage')!.click(); await delay();
     assert.doesNotMatch(document.body.textContent!, /model-alpha|model-beta|1.90K/);
@@ -118,7 +118,7 @@ test('窗口获焦只核对本机连接，首次排序点击不触发额外远�
     await delay();
     assert.equal(m.calls().length, before);
     assert.equal(m.dom.window.document.querySelector('[data-usage-sort="cost"]')!.getAttribute('aria-pressed'), 'true');
-    assert.equal(m.dom.window.document.querySelector('.usage-model th')!.textContent, 'model-beta');
+    assert.equal(m.dom.window.document.querySelector('.model-name')!.textContent, 'model-beta');
   } finally { m.close(); }
 });
 test('用量区域区分未知、真实空数据和过期；模型名转义，不伪造占比', () => {
@@ -237,7 +237,7 @@ test('Token 与费用上限分别可选，未设限不显示零余额或虚构�
     assert.deepEqual([...dom.window.document.querySelectorAll('.used')].map(el => el.textContent), ['未提供已用', '未提供已用']);
     assert.deepEqual([...dom.window.document.querySelectorAll('.metric dd')].map(el => el.textContent), ['未设限', '未设限', '未设限', '未设限']);
     assert.equal(dom.window.document.querySelector('.quota-card .notice'), null);
-    assert.equal(dom.window.document.querySelector('.track div, #countdown'), null);
+    assert.equal(dom.window.document.querySelector('.quota-card .track div, #countdown'), null);
   } finally { dom.window.close(); }
 });
 test('所有可见时间转为北京时间并保留原始瞬间，移除三处读取时间', () => {

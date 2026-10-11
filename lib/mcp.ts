@@ -10,7 +10,7 @@ import { usagePeriods, type UsagePeriod } from './types';
 import { brandIcons } from './brand';
 export const RESOURCE_URI = 'ui://magpie/quota-dashboard';
 export function createQuotaServer(runtime: Runtime, connector: ConnectServer, widgetHtml: string) {
-  const server = new McpServer({ name: 'Magpie 额度看板', version: '0.1.3', icons: brandIcons });
+  const server = new McpServer({ name: 'Magpie 额度看板', version: '0.1.4', icons: brandIcons });
   new OpenAIExtensions(server);
   registerAppResource(server, 'Magpie 额度看板', RESOURCE_URI, {}, async () => ({
     contents: [{ uri: RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE, text: widgetHtml,

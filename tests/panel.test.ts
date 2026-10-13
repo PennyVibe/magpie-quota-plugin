@@ -104,6 +104,12 @@ test('模型概览静态展示，刷新保留排序与焦点，连接管理清�
     assert.equal(document.querySelector('[data-usage-sort="cost"]')!.getAttribute('aria-pressed'), 'true');
     assert.equal(document.querySelector('.model-name')!.textContent, 'model-beta');
     assert.equal((document.activeElement as HTMLButtonElement).dataset.usageSort, 'cost');
+    const models = document.querySelector<HTMLUListElement>('.usage-models')!;
+    assert.equal(models.tabIndex, 0);
+    models.scrollTop = 120; models.focus();
+    m.tick(60000); await delay();
+    assert.equal(document.querySelector('.usage-models')!.scrollTop, 120);
+    assert.equal(document.activeElement, document.querySelector('.usage-models'));
     document.querySelector<HTMLButtonElement>('#manage')!.click(); await delay();
     assert.doesNotMatch(document.body.textContent!, /model-alpha|model-beta|1.90K/);
     assert.deepEqual(m.errors, []);

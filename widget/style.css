@@ -134,7 +134,8 @@ time { overflow-wrap: anywhere; }
 .window-remaining { margin-top: .75rem; }
 .window-reset { display: flex; align-items: baseline; gap: .375rem; margin-top: .375rem; }
 .window-reset .icon { width: 1rem; height: 1rem; align-self: flex-start; margin-top: .125rem; }
-.model-usage { min-width: 0; }
+.model-usage { display: flex; flex-direction: column; min-width: 0; min-height: 0; max-height: calc(100dvh - 2rem); overflow-y: auto; }
+.model-usage > * { flex-shrink: 0; }
 .usage-heading { align-items: flex-start; flex-wrap: wrap; row-gap: 1.25rem; }
 .usage-heading h2 { font-size: 1.375rem; }
 .usage-heading .hint { margin-top: .5rem; }
@@ -154,7 +155,7 @@ time { overflow-wrap: anywhere; }
 .usage-segment button { min-height: 2rem; border: 0; background: transparent; padding: .375rem .75rem; border-radius: .5rem; font-size: .8125rem; color: var(--muted); white-space: nowrap; }
 .usage-segment button[aria-pressed="true"] { background: var(--surface); box-shadow: 0 1px 4px #243a3410; color: var(--accent); }
 .usage-periods { margin-left: auto; flex-wrap: wrap; }
-.usage-models { margin: 0; padding: 0; list-style: none; font-size: .875rem; font-variant-numeric: tabular-nums lining-nums; }
+.usage-models { min-height: 6rem; flex: 1; overflow-y: auto; overscroll-behavior-y: contain; margin: 0; padding: 0 .5rem 0 0; list-style: none; font-size: .875rem; font-variant-numeric: tabular-nums lining-nums; }
 .usage-model { padding: 1.5rem 0; border-bottom: 1px solid var(--line); --model-color: var(--accent); }
 .usage-model:nth-child(4n+2) { --model-color: #557fab; }
 .usage-model:nth-child(4n+3) { --model-color: #b88b45; }
@@ -174,15 +175,22 @@ time { overflow-wrap: anywhere; }
 .usage-unavailable { padding: 2.5rem 0 1rem; font-size: .9375rem; }
 .usage-unavailable .hint { margin-top: .5rem; }
 @media (min-width: 840px) {
-  .dashboard-layout { grid-template-columns: minmax(0, .88fr) minmax(0, 1.12fr); gap: 1.5rem 2rem; }
+  /* 使用窗口剩余高度，避免模型数量决定整行卡片的高度。 */
+  main { display: flex; flex-direction: column; height: 100dvh; }
+  main > * { flex-shrink: 0; }
+  .dashboard-layout { flex: 1; min-height: 0; grid-template-columns: minmax(0, .88fr) minmax(0, 1.12fr); grid-template-rows: auto minmax(0, 1fr); gap: 1.5rem 2rem; }
   .dashboard-section-title { grid-column: 1; }
-  .quota-layout { grid-column: 1; grid-row: 2; align-self: stretch; }
+  .quota-layout { display: flex; flex-direction: column; min-height: 0; grid-column: 1; grid-row: 2; align-self: stretch; }
   .quota-card, .shared, .upstream-card, .model-usage { display: flex; flex-direction: column; }
+  .quota-layout > * { flex: 1 1 auto; min-height: 0; }
+  .quota-card, .quota-layout > .empty, .shared > .upstream-card, .shared > .empty { overflow-y: auto; overscroll-behavior-y: contain; }
+  .quota-card > *, .shared > *, .upstream-card > * { flex-shrink: 0; }
   .quota-card .reset { margin-top: auto; }
-  .shared > .upstream-card, .shared > .empty, .upstream-windows { flex: 1; }
-  .model-usage { grid-column: 2; grid-row: 2; align-self: stretch; }
+  .shared > .upstream-card, .shared > .empty { flex: 1; min-height: 0; }
+  .upstream-windows { flex: 1 0 auto; }
+  .model-usage { grid-column: 2; grid-row: 2; align-self: stretch; max-height: 100%; }
   .usage-models { display: flex; flex-direction: column; flex: 1; }
-  .usage-model { display: flex; flex-direction: column; justify-content: center; flex: 1; }
+  .usage-model { display: flex; flex-direction: column; justify-content: center; flex: 1 0 auto; }
 }
 @media (min-width: 840px) and (max-width: 1100px) {
   .usage-stat h3 { flex-direction: column; align-items: flex-start; gap: .5rem; }

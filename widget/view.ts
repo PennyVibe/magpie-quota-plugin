@@ -43,7 +43,7 @@ function renderUsage(snapshot: Snapshot, state: UsageViewState) {
     ${total.calls === 0 && models.length === 0 ? `<div class="usage-unavailable"><p>${period === 'today' ? '今天' : '所选范围'}暂无用量</p></div>` : `
     <div class="usage-toolbar"><div><h3>模型分布</h3><p class="hint">Token 占比</p></div><div class="usage-segment" role="group" aria-label="模型排序">
       <button data-usage-sort="tokens" aria-pressed="${state.sort === 'tokens'}">Token</button><button data-usage-sort="cost" aria-pressed="${state.sort === 'cost'}">金额</button></div></div>
-    <ul class="usage-models" aria-label="各模型用量">${models.map(model => {
+    <ul class="usage-models" tabindex="0" aria-label="各模型用量">${models.map(model => {
       const percent = share(model.tokens);
       return `<li class="usage-model"><div class="model-heading"><h4 class="model-name">${escape(model.id || '未标注模型')}</h4>
         <p class="model-tokens">Token ${tokens(model.tokens)} <span class="model-percent">· ${percent === null ? '占比未知' : `占比 ${percent.toFixed(1)}%`}</span></p></div>

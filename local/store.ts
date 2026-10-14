@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { GatewayError, normalizeAddress, validateKey } from '../lib/gateway';
 import type { Connection } from '../lib/types';
 
-// 保留旧字段的读取兼容性；共享卡片现在始终展示，不再使用连接开关。
+// Retain the legacy field only to read existing connection files.
 export type SavedConnection = Connection & { key: string; upstreamEnabled?: boolean };
 type State = { revision: string; activeId: string | null; connections: SavedConnection[] };
 export function dataDirectory() {

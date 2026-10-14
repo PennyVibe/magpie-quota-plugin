@@ -10,7 +10,7 @@ import { usagePeriods, type UsagePeriod } from './types';
 import { brandIcons } from './brand';
 export const RESOURCE_URI = 'ui://magpie/quota-dashboard';
 export function createQuotaServer(runtime: Runtime, connector: ConnectServer, widgetHtml: string) {
-  const server = new McpServer({ name: 'Magpie 额度看板', version: '0.1.5', icons: brandIcons });
+  const server = new McpServer({ name: 'Magpie 额度看板', version: '0.1.6', icons: brandIcons });
   new OpenAIExtensions(server);
   registerAppResource(server, 'Magpie 额度看板', RESOURCE_URI, {}, async () => ({
     contents: [{ uri: RESOURCE_URI, mimeType: RESOURCE_MIME_TYPE, text: widgetHtml,
@@ -18,7 +18,7 @@ export function createQuotaServer(runtime: Runtime, connector: ConnectServer, wi
         'openai/ui': { preferredDisplayMode: 'fullscreen', availableDisplayModes: ['fullscreen'] } } }],
   }));
   const annotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
-  const run = async (include: 'dashboard' | 'quota' | 'models' | 'cards', period: UsagePeriod = 'today') => {
+  const run = async (include: 'dashboard' | 'quota' | 'models', period: UsagePeriod = 'today') => {
     try {
       const data = await runtime.snapshot(include, period);
       // Host connection URL belongs to this result object only.
@@ -31,7 +31,7 @@ export function createQuotaServer(runtime: Runtime, connector: ConnectServer, wi
     }
   };
   registerAppTool(server, 'open_quota_dashboard', {
-    title: 'Magpie 额度看板', description: '打开看板，只读查询已保存连接的 Gateway key 自身额度及所选时间范围的个人模型用量。范围支持今天、近 7 天、近 30 天、全部，默认今天；默认展示共享供应商缓存额度。无法确认个人统计范围时明确不可用，不自动读取可用模型列表。首次或切换连接请在本机连接页亲自填写地址和 Key。',
+    title: 'Magpie 额度看板', description: '打开看板，只读查询已保存连接的 Gateway key 自身额度及所选时间范围的个人模型用量、Token 构成和调用质量。范围支持今天、近 7 天、近 30 天、全部，默认今天。无法确认个人统计范围时明确不可用，不自动读取可用模型列表。首次或切换连接请在本机连接页亲自填写地址和 Key。',
     inputSchema: z.object({ period: z.enum(usagePeriods).optional() }).strict(), annotations,
     _meta: { ui: { resourceUri: RESOURCE_URI, visibility: ['app', 'model'] }, 'openai/ui': { entrypoints: [{ type: 'global' }] } },
   }, ({ period }) => run('dashboard', period));
@@ -43,10 +43,6 @@ export function createQuotaServer(runtime: Runtime, connector: ConnectServer, wi
     title: '查询可用模型', description: '只读取当前已保存连接 Key 的可用模型，不发起推理。',
     inputSchema: z.object({}).strict(), annotations,
   }, () => run('models'));
-  server.registerTool('get_upstream_quota_cards', {
-    title: '查询远端共享供应商额度', description: '只读当前连接服务器缓存的共享供应商额度卡片。未按当前 Gateway key 的账号权限过滤，不代表个人使用量；不主动刷新供应商。',
-    inputSchema: z.object({}).strict(), annotations,
-  }, () => run('cards'));
   registerAppTool(server, 'manage_connections', {
     title: '打开本机连接管理', description: '仅供用户在看板打开连接管理页；地址和 Key 由用户亲自填写。',
     inputSchema: z.object({}).strict(), annotations,

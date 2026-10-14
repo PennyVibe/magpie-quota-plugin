@@ -11,6 +11,7 @@ test('只投影完整模型汇总，Token 包含缓存读写且不重复计算�
   const usage = parsePersonalUsage(usageFixture(), keyA), text = JSON.stringify(usage);
   assert.equal(usage.totals.tokens, 1900); assert.equal(usage.models[0].tokens, 1550);
   assert.equal(usage.totals.cost, .25); assert.equal(usage.totals.calls, 3);
+  assert.equal(usage.totals.errors, 0); assert.equal(usage.totals.retried, 0);
   assert.equal(usage.source, 'through'); assert.equal(usage.scope, 'current-key');
   assert.doesNotMatch(text, /private-|reasoning|cache_write_1h|rows|callerKeys/); assert.ok(!text.includes(keyA));
 });
@@ -28,6 +29,16 @@ test('缺失和非法数字保持未知，真实零用量可展示，不接受�
     assert.throws(() => parsePersonalUsage({ ...usageFixture(), ...patch }, keyA), GatewayError);
   }
   assert.equal(parsePersonalUsage({ ...f, input: Number.MAX_SAFE_INTEGER }, keyA).totals.tokens, null);
+});
+test('调用质量仅投影汇总计数，重试省略为零，无效及矛盾数字为未知', () => {
+  const active = parsePersonalUsage({ ...usageFixture(), errors: 1, retried: 2 }, keyA);
+  assert.equal(active.totals.errors, 1); assert.equal(active.totals.retried, 2);
+  for (const patch of [{ errors: undefined, retried: null }, { errors: -1, retried: '2' },
+    { errors: 4, retried: 4 }, { errors: Infinity, retried: .5 }]) {
+    const usage = parsePersonalUsage({ ...usageFixture(), ...patch }, keyA);
+    assert.equal(usage.totals.errors, null); assert.equal(usage.totals.retried, null);
+  }
+  assert.equal(parsePersonalUsage({ ...usageFixture(), errors: 2, retried: 2 }, keyA).totals.retried, null);
 });
 test('模型文本转发有大小、控制字符、密钥泄露和重复保护', () => {
   for (const id of [' ', 'x'.repeat(301), 'hidden\nmodel', `model-${keyA}`, 'model-beta']) {
@@ -79,11 +90,10 @@ test('无限制 Key 丢弃全局结果，不按非唯一名称推断身份', asy
     assert.equal(paths.length, 1);
   } finally { await server.close(); }
 });
-test('用量失败独立于额度与共享卡片，保留过期数据；权限范围变化立即清空', async () => {
+test('用量失败独立于额度，保留过期数据；权限范围变化立即清空', async () => {
   const t = await temporaryStore(); let status = 200, limited = true;
   const server = await mockServer((req, res) => {
     if (req.url?.endsWith('/limit')) json(res, limited ? quotaFixture() : { limited: false, key: 'Synthetic' });
-    else if (req.url?.endsWith('/cards')) json(res, { object: 'list', data: [] });
     else json(res, usageFixture(), status);
   });
   try {
@@ -93,7 +103,7 @@ test('用量失败独立于额度与共享卡片，保留过期数据；权限�
     status = 503;
     const failed = await runtime.snapshot('dashboard');
     assert.deepEqual(failed.usage, first.usage); assert.equal(failed.usageReadAt, first.usageReadAt); assert.equal(failed.stale, true);
-    assert.equal(failed.quotaError, null); assert.equal(failed.upstreamError, null);
+    assert.equal(failed.quotaError, null);
     status = 200; limited = false;
     const changed = await runtime.snapshot('dashboard');
     assert.equal(changed.usage, null); assert.equal(changed.usageReadAt, null); assert.equal(changed.usageError?.code, 'usage_scope_unknown');
@@ -106,7 +116,6 @@ test('四个时间范围封闭读取与响应核对，禁止任意查询和跨�
   const server = await mockServer((req, res) => {
     paths.push(req.url!);
     if (req.url?.endsWith('/limit')) json(res, quotaFixture());
-    else if (req.url?.endsWith('/cards')) json(res, { object: 'list', data: [] });
     else json(res, { ...usageFixture(), period: new URL(req.url!, 'http://localhost').searchParams.get('period') }, failure ? 503 : 200);
   });
   try {

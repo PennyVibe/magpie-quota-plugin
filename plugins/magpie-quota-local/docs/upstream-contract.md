@@ -1,161 +1,103 @@
-# Magpie 接口契约与兼容性
+# Magpie 接口契约
 
-核对日期：2026-10-10。当前适配目标为官方仓库 `yetone/magpie` 最新源码快照 commit `d06df1825502c4efe9c9085cf343d9dda44b582a`。通过 GitHub API 核对 `HEAD` 与固定源码；仅使用合成 Key / mock 验证，不读取已有服务器凭证。本插件按当前接口契约解析，不增加旧版本回退接口或窗口推断。
+核对日期：2026-10-14。适配官方仓库 `yetone/magpie` 的当前 HEAD `eb0d5750f86a39342f2901079f1a07bff3d06aa4`，并确认最新发布版 `v0.1.1231` 已包含受限 Key 的共享额度隔离。仅使用合成 Key / mock 验证，不读取已有服务器凭证；不增加旧版本回退逻辑。
 
-官方文档：
-<https://github.com/yetone/magpie/blob/d06df1825502c4efe9c9085cf343d9dda44b582a/docs/reference.md>
+官方文档：<https://github.com/yetone/magpie/blob/eb0d5750f86a39342f2901079f1a07bff3d06aa4/docs/reference.md>。
 
-关键源码（以下路径均相对该 commit）：
+关键源码（相对该 commit）：`internal/gateway/key_limit.go`、`lan.go`、`usage_api.go`、`gateway.go`、`session_route.go`、`concurrency.go`、`internal/budget/budget.go`、`internal/access/limit.go`、`internal/usage/usage.go`、`request_page.go`、`internal/usageapi/usageapi.go`。
 
-- `internal/gateway/key_limit.go`：`keyLimit` 与 GET 放行规则。
-- `internal/budget/budget.go`：`Status`、`status`、`Of`，剩余与耗尽计算。
-- `internal/access/limit.go`：`Limit`、`Limited`、`Valid`、`Window`。
-- `internal/gateway/lan.go`：`lanGuard`、`identifyCaller`、`callerKeys`、`sharedWith`。
-- `internal/gateway/gateway.go`：`models`、`modelObject`、`catalogFor`、`quotas`、`quotaCards`。
-- `internal/gateway/key_models.go`：`keyAllowed` 及模型/账号限制。
-- `internal/provider/quotas.go`：`QuotaReport` 与账号/计划额度数据。
-- `internal/provider/remote_quotas.go`：`CachedCards`。
-- `internal/provider/subscription_usage.go`：`SubscriptionQuota`、`QuotaWindow`。
-- `internal/gateway/key_limit_test.go`、`quotas_lan_test.go`、`quotas_remote_test.go`：上游契约的回归证据。
+## 可查询信息与当前取舍
 
-## 认证与权限
+| 接口 | 最新契约与权限 | 插件行为 |
+| --- | --- | --- |
+| `GET /v1/magpie/limit` | 当前 Key 的预算窗口、已用、上限、剩余、调用数、在途与预留 | 连接验证及看板查询 |
+| `GET /v1/magpie/usage/requests` | 受限 Key 强制隔离当前 Key；含全范围汇总与 `by.model` | 看板固定读取四个时间范围，仅投影个人汇总 |
+| `GET /v1/magpie/usage` | 受限 Key 返回明确 403；未受限 Key 返回全局汇总 | 仅在没有预算时探测隔离范围，成功响应丢弃 |
+| `GET /v1/models` | 按 Key 的模型及账号规则筛选的模型列表 | 仅独立 `list_available_models` 工具主动查询，看板不读取 |
+| `/v1/magpie/quotas`、`quotas/cards`、`quotas/history` | 预算、模型或账号任意受限的 Key 返回 403 `gateway_key_held` | 完全移除共享查询、缓存、展示及 `get_upstream_quota_cards` 工具 |
+| `GET /v1/magpie/concurrency` | 全局账号并发信息，受限 Key 同样返回 403 | 不查询 |
+| `GET /v1/magpie/route` | 必须指定会话；受限 Key 只能读取自己的会话路由，可能含账号与错误 | 不查询、不获取会话标识 |
 
-插件仅发送 `Authorization: Bearer <Gateway key>`。官方还接受 `x-api-key`、`x-goog-api-key` 与 `?key=`；插件不使用这些替代入口，用户输入的连接 URL 查询参数全部拒绝；用量请求参数仅由后台按固定 allowlist 生成。
+共享权限变更来自 2026-10-13 commit `12ecb6d8e9e5e1a115a996e7508b0d59601575f0`（#1981）。`heldKey` 判断 `KeyID != ""` 且预算、模型、账号任意限制非空。插件旧连接文件中的 `upstreamEnabled` 仅保留读取兼容性，不触发查询、不进入快照；无需重写凭证文件。
 
-远端请求需要网关允许远程访问且 Key 启用。缺少、禁用或无效 Key 返回 401；网关不允许远程访问时可能 403。反向代理头、绑定地址、LAN 设置会影响上游对远端的判定。loopback 是特别情况：可以接受无效 token，但仅有效启用 Key 会被归属到 named identity。因此 `limited:false` 本身不能独立证明有效 Gateway key。插件要求 `/limit` 的 `key` 为非空字符串，否则报 `key_unattributed` 并拒绝保存。
+插件 GET allowlist 只有 limit、models、usage 范围探测和 usage/requests 固定分页。没有共享接口、通用代理、推理、POST refresh、重置、Key 管理或账号管理请求。
 
-GET 状态查询不执行模型推理，也不被个人额度 POST 限制阻止。真实远端的代理认证、TLS、具体权限或版本尚未验证。
+## 认证与读取边界
+
+仅发送 `Authorization: Bearer <Gateway key>`。连接地址必须为 HTTP/HTTPS；用户信息、查询参数、片段及编码路径分隔符均拒绝。网关需要允许远程访问且 Key 启用；反向代理、LAN 与 IP allowlist 影响上游远端判定。缺少、禁用或无效 Key 可返回 401；策略拒绝可返回 403。
+
+loopback 可以接受无效 token，但仅有效启用 Key 会被归属。因此 `limited:false` 不证明 Key 有效，`/limit.key` 必须为非空名称，否则 `key_unattributed` 并拒绝保存。不复制 Key 名称，不按名称猜 Key ID。Key 不进入结果、宿主元数据、日志或启动参数；连接管理 URL 仅放 `_meta`。
+
+全部请求拒绝重定向，Bearer 仅发送到已保存地址；成功 JSON 上限 2 MiB，错误范围探测上限 4 KiB。个人用量两次读取总计不超过 10 秒。上游动态错误正文、header、账号与请求行不进入结果。
 
 ## GET /v1/magpie/limit
 
-无配置限额（或者未归属到 Key）的真实 shape：
+无预算时：`{"limited":false,"key":"Synthetic user"}`。不提供窗口计数，不能表示零用量或没有在途请求。
 
-```json
-{"limited":false,"key":"Gateway key 的名称"}
-```
-
-其中 `key` 是名称，不是密钥值；未归属时通常为空字符串。插件不复制服务器 Key 名称到模型结果。
-
-### 个人模型用量与限额分开读取
-
-`/limit` 仍只在有限额时返回当前预算窗口的计数；`limited:false` 不代表零用量。2026-10-10 新增网关用量接口，核对当前官方快照 `8d95ebc8c307b4363f6731b688b1014a1958524d` 的 `internal/gateway/usage_api.go`、`internal/usageapi/usageapi.go`、`internal/usage/request_page.go`、`internal/usage/usage.go`、`internal/access/access.go`。以下用量节描述新接口与个人隔离限制，替代先前“网关没有用量 GET”的版本结论。既有限额和共享卡片契约同时重新核对。
-
-有限额真实 shape 示意，数值为合成示例：
+有预算时（合成示例）：
 
 ```json
 {
   "limited": true,
   "key": "Synthetic user",
   "limit": {
-    "period": "week",
-    "start": "2026-10-05T00:00:00+08:00",
-    "reset": "2026-10-12T00:00:00+08:00",
-    "calls": 3,
-    "tokens": 30,
-    "cost": 0.125,
-    "tokenLimit": 100,
-    "costLimit": 2,
-    "tokensLeft": 70,
-    "costLeft": 1.875,
-    "spent": false
+    "period": "days", "days": 7,
+    "start": "2026-10-13T15:06:42+08:00", "reset": "2026-10-20T15:06:42+08:00",
+    "calls": 12, "tokens": 19300000, "cost": 127.436642,
+    "costLimit": 800, "tokensLeft": 0, "costLeft": 672.563358,
+    "inFlight": 2, "reserved": 4500, "reservedCost": 0.123456, "spent": false
   }
 }
 ```
 
-| 字段 | 已确认含义 | 插件处理 |
-| --- | --- | --- |
-| `limited` | Key 是否有非零 Token 或费用 cap | 必须为 boolean，缺失不视作 unlimited |
-| `period` | 一个窗口，`day` / `week` / `month` / `days` | 展示实际窗口；`days` 显示“每 N 天”，未知值报契约不支持 |
-| `days` | `period:days` 时的整数周期天数，范围 1–3650；其他周期省略 | `days` 周期必须提供合法值，不根据起止时间猜天数；其他周期不使用 |
-| `start` / `reset` | Go time.Time JSON 的 RFC3339 时间 | 保留原始瞬间；页面转为北京时间，缺失不推断 |
-| `tokens` | 已结算未缓存输入、输出、缓存写入，配置开启时还包括缓存读取 | 非负安全整数；缺失或无效显示未知 |
-| `cost` | 服务器 Usage 价格的 USD 估算费用 | 非负有限数；不标实际账单 |
-| `tokenLimit` / `costLimit` | 大于 0 为 cap；0 省略（omitempty） | 省略或合法 0 表示本维度没有 cap |
-| `tokensLeft` / `costLeft` | 有 cap 时 `max(cap-used,0)`；无 cap 时输出 0 | 优先原值；无 cap 的 0 不能标零余额 |
-| `spent` | 任一有 cap 维度达到上限 | 原值展示，缺失则 unknown |
-| `cacheReads` | 是否计入缓存读取，false 省略 | UI 保守显示缺省口径未提供，不自行改计数 |
-| `unpriced` | 无已知价格的调用数，0 省略 | 有值才显示，不推断费用 |
-| `inFlight` / `reserved` / `reservedCost` | 在途请求与额度预留，0 省略 | 第一版不显示、不加入已结算值 |
-| `calls` | 本窗口该 Key 的调用计数 | 第一版不提供请求数统计 |
-
-cap 为 0 表示无 cap，源码 `Limited()` 只有 `Tokens > 0 || Cost > 0` 才有配置。因此“零额度”在当前版本主要是实际已用 0 或剩余 0；不能把配置 cap=0 宣称为禁止使用。插件用合成 mock 验证真实零值、缺失、负数、非有限值和溢出，未捏造另一种上游配置语义。
-
-当前源码包含 #1509（commit `3541ec2fd5ca544bcae9d48cfefb5a4ebfca9abf`）：`budget.Status` 新增 `days` 字段，GET `/limit` 路径和其他额度字段保持原样。`days` 周期从服务器设置限额或重置用量时开始，每个周期为 N×24 小时的绝对时间，不按午夜、周一或月初计算。日、周、月仍使用服务器 time.Location 的日历窗口。
-
-服务器手动重置用量后，Token 与费用窗口计数从零开始，但 usage log 不删除。`days` 周期同时重新开始；日、周、月保留原重置终点。插件直接采用每次响应的 `start/reset` 和剩余值，不使用本机时区补窗口、不根据 N 推算重置时间，也不将额度重置当作模型统计清零。费用未定价调用不加成本；总费用不是充值余额。
-
-## GET /v1/magpie/usage 与 /v1/magpie/usage/requests
-
-官方源码链接：<https://github.com/yetone/magpie/blob/8d95ebc8c307b4363f6731b688b1014a1958524d/internal/gateway/usage_api.go>。
-
-两个接口均要求 `local(r) || sharedWith(r)`。服务器 `heldKey` 在 Key 有预算、模型规则或账号限制时为 true。`usage/requests` 对此类 Key 强制使用 `who.KeyID` 作为 `CallerKey`，再经过 `OwnPage` 投影；插件因此可确认个人统计。未受限的 Key 可以读到全服务器汇总与请求，不能直接标为个人用量。
-
-插件只接受四个预设 `period=today|7d|30d|all`，默认 `today`，日期由服务器时区解释；不推断客户端午夜，不开放任意筛选参数或 URL。重新核对官方固定快照 `8d95ebc8c307b4363f6731b688b1014a1958524d` 的 `usage.Periods`、`Period.Since` 和 `usageapi.PeriodOf`：7d 从服务器今天午夜往前六天、30d 往前二十九天，all 为全部记录。页面保留的绝对时间全部转换为 `Asia/Shanghai`。
-
-- `/limit limited:true` 已确认预算限制，直接读取 `/usage/requests?period=<枚举>&via=through&limit=1&offset=0`。
-- `/limit limited:false` 无法区分模型/账号限制与完全未受限。先读取 `/usage?period=<枚举>`，只在 HTTP 403 且 `error.message` 与官方固定的 held-key 拒绝信息完全一致时确认个人范围，再请求明细汇总。普通 403 不足以证明范围，不继续读取。
-- summary 成功代表没有确认个人范围，响应内容全部丢弃，显示固定 `usage_scope_unknown`。服务器 Key 名称不保证唯一，不能按 `/limit.key` 匹配 summary 的 callerKeys 推断 ID。
-- 旧接口 404/405/501 或其他错误只影响模型用量区，保留独立限额与共享卡片。
-
-`usage/requests` 顶层嵌入 `Totals`，`by.model` 是整个筛选范围的模型汇总，与分页 `rows` 数量无关。固定 `limit=1` 避免读取大量敏感请求行，不逐页抓取；`via=through` 只统计网关请求。根 `through/direct` 字段在官方代码中清除了来源筛选，不能替代当前根汇总，不能据此推断 direct 必须为零。
-
-| 字段 | 插件处理 |
+| 字段 | 已确认含义与插件处理 |
 | --- | --- |
-| `period/offset/total/rows/by.model` | 核对响应与所选范围一致、第一页和封闭响应尺寸；不复制请求行 |
-| `calls` | 计入用量的调用数（服务器拒绝的记录不计入），非负安全整数；模型合计须与总量一致 |
-| `input/output/cache_read/cache_write` | 四个 Token 细分，非负安全整数；缺失或非法显示未知 |
-| Token 总量与占比 | 四项相加，含缓存读写；任一未知或总和溢出则总量/占比未知 |
-| `cache_write_1h/reasoning` | 不重复计入 Token 总量，不转发 |
-| `cost` | 原始非负有限 USD 估算金额，不按模型价格补算 |
-| `unpriced` | 未定价调用数，缺失未知；大于零注明未计入费用 |
-| `by.model[].id` | 唯一模型 ID，限制长度与控制字符，拒绝包含完整 Key 的回显；不复制 name/icon 或 provider/modelAt |
-| callerKeys/accounts/providers/agents/computers/series/rows/path | 不进入快照、模型结果、UI 或日志 |
+| `limited` | 必须为 boolean；有限额时至少一个合法非零 cap |
+| `period/days` | `day/week/month/days`；days 周期必须提供 1–3650 的整数天数，不从起止时间猜 |
+| `start/reset` | 服务器 RFC3339 绝对瞬间；统一展示为 Asia/Shanghai，保留 datetime 原精度 |
+| `tokens/cost` | 已结算 Token / USD 估算费用；未知数字不补零 |
+| `tokenLimit/costLimit` | 省略或合法零为本维度无 cap；非法数字为未知 |
+| `tokensLeft/costLeft` | 优先服务器原值；无 cap 的零不得显示零余额 |
+| `spent` | 任一有 cap 维度达到上限；缺失为未知 |
+| `calls` | 当前预算窗口已结算调用数；缺失或非法为未知，与所选模型统计时间范围分开 |
+| `inFlight` | 当前 Key 在途请求数；最新 Status 的 `omitempty` 省略表示零，非法为未知 |
+| `reserved/reservedCost` | 在途请求预留 Token / 费用；`omitempty` 省略表示零，非法为未知；不加进已结算值或从服务器剩余值再次扣除 |
+| `cacheReads` | 是否将缓存读取计入预算；false 省略，维持缺省口径未提供 |
+| `unpriced` | 未定价调用数，省略为未知，有值才显示 |
 
-合计校验适用于完整合法整数的 calls 与四项 Token；费用直接采用服务器值，不用浮点精确相等判断。真实总量零且无模型时显示“今天暂无用量”；未知值不得伪造零、占比或空调用。范围/身份拒绝后立即清空旧个人用量；同连接同范围暂时读取失败保留上次成功数据并标过期。范围切换清空旧个人统计，缓存不跨范围复用；范围或连接变更均丢弃迟到统计。模型概览以静态表格展示，支持 Token/金额排序，不提供模型点击展开或细分面板；四项 Token 仍用于后台总量计算，不查询可用模型列表。
+Token 预算口径为 input + output + cache_write，配置 `CacheReads` 时再含 cache_read；与个人模型 Token 总量的含缓存口径不同。日、周、月使用服务器日历窗口；days 从设置或手动重置开始，周期 N×24 小时。手动重置预算不删除 usage log，不能作为模型统计清零。
 
-范围探测只解析最多 4 KiB 的错误 JSON，将官方固定拒绝消息映射为内部信号，不传播任何错误原文。两次用量读取合计最多 10 秒；成功 JSON 仍遵循 2 MiB 上限、拒绝重定向、Bearer 仅发向已保存地址。
+## 个人模型用量与调用质量
 
-## GET /v1/models
+只接受 `period=today|7d|30d|all`，默认 today。7d 是服务器今天午夜向前六天，30d 向前二十九天，all 为全部记录；不使用客户端午夜生成筛选。固定请求：
 
-顶层 OpenAI shape 为 `{"object":"list","data":[...]}`。每条至少是一个 object，模型 ID 为 `id`。当前 `modelObject` 还返回 `object/type/created/created_at/owned_by/display_name/reasoning/supported_reasoning_levels` 等字段，版本与模型类型可能扩展字段。
+`GET /v1/magpie/usage/requests?period=<枚举>&via=through&limit=1&offset=0`
 
-处理路径为 `catalogFor` / `keyAllowed`，根据 caller 的模型规则和账号限制筛选。路由组、provider 通配与账号权限会改变结果；空规则代表 unrestricted。插件只返回去重的字符串 ID，不复制账号、供应商额外信息，不将列表等同于可对话模型分类，也不发起推理验收。此接口仅由独立的 `list_available_models` 工具主动查询；看板不展示或自动查询可用模型列表，也不将该缓存或查询失败放入看板快照。模型用量区域的模型 ID 来自个人调用汇总。
+有预算的 Key 直接读取。无预算时先读取 `/usage?period=<枚举>`，仅在 HTTP 403 的固定官方消息 `this gateway key is held to a budget, models or accounts, so it is told its own calls alone: GET /v1/magpie/usage/requests` 完全匹配时确认模型/账号受限，继续读取 requests。普通 403 不证明个人范围；summary 成功返回全局数据，丢弃并显示 `usage_scope_unknown`。Key 名称不唯一，不按名称推断 ID。
 
-## GET /v1/magpie/quotas 与 /v1/magpie/quotas/cards
+requests 的根 Totals 与 `by.model` 覆盖整个筛选范围，与分页 rows 数量无关。仅取一行控制敏感响应规模，不逐页抓取。根 `through/direct` 清除了来源筛选，不作为当前根汇总的替代。
 
-两个接口均检查 `local(r) || sharedWith(r)`。在所核对 commit 中：
-
-- `quotas`：`{"object":"list","data":provider.QuotaReport(ctx,time.Now())}`，12 秒 context，可读取远端供应商/订阅报告。
-- `quotaCards`：`{"object":"list","data":provider.CachedCards(time.Now())}`，返回本机服务器已读缓存，不主动问 vendor。
-- `Quota` / `SubscriptionQuota` 可能包含 `user`、账号/计划标识、provider、状态、窗口、历史或最近服务元数据。`QuotaReport` 枚举服务器 provider，而 `CachedCards` 没有 request/caller 参数。
-- 处理路径没有调用 `keyAllowed`、Key account filter 或当前 Key 的 personal budget。共享访问授权不等于按 Key 隔离账号信息。
-
-已经确认的是共享访问与不按 Key 筛选的边界；没有将这些共享信息转换为个人额度。用户于 2026-10-10 明确要求共享供应商额度默认展示，不提供选择开关。新旧连接统一只读取 `quotas/cards` 缓存接口；旧连接的 `upstreamEnabled` 字段保持文件读取兼容，但不再控制行为，无需重写凭证文件。`get_upstream_quota_cards` 也直接查询当前连接的缓存卡片。本次重新下载并核对固定快照 `27e69702e1a6c150622377a1bc48229376375bc8` 的 `Server.quotaCards` 与 `CachedCards`，接口和解析契约未变。区域独立标为共享，不混入个人限额。没有 GET `/quotas`、POST refresh、历史、重置或账号管理路径。
-
-卡片顶层为 `object:list,data:SubscriptionQuota[]`，每条按实际契约投影 `provider/name/kind/plan/windows/balance/readAt/asOf`。`user`、AccessSKU、reset credits、history/daily/checkin/balanceTrend/holds/管理字段均丢弃；上游 `error` 仅转换成 unavailable boolean，不传播 raw 详情。
-
-窗口为 `QuotaWindow`：`name`、`used`（已用百分比）、可选 `unlimited/resetsAt/resetSecs/amount/limit/unit`。cards 无 `remaining`，同一源码的 `quotaReport` 将其转换为 `max(0,100-used)`，插件采用这条已确认规则计算剩余百分比。超额时保留原使用百分比，进度条限制为 100%；缺失或无效值为 unknown。`resetsAt` 为服务器绝对时间；只提供 `resetSecs` 时显示原相对值，不以抓取时刻或本机窗口猜绝对时间。
-
-`CachedCards` 可返回很旧的缓存或空数组；插件显示缓存来源，后台保留读取时间，页面不展示接口读取时间和供应商数据读取时间。`asOf` 或 raw error 存在时标注服务器卡片可能过期。接口 HTTP 失败保留当前连接上次成功卡片并标明过期；切换或移除连接清空旧卡片。新版本字段未知时不猜测；旧版本 404/405/501 时报告共享区域不支持，不回退到其他共享接口。
-
-## 错误与兼容性
-
-插件不返回上游错误 body/header 内的动态详情，只返回固定中文错误。用量范围探测仅识别官方固定 403 消息并转换成内部范围信号。未读入服务器日志或真实凭证。
-
-| 情况 | 表达与降级 |
+| 字段 / 展示 | 处理 |
 | --- | --- |
-| 401 | `invalid_key`；可能无效、禁用或撤销 |
-| 403 | `forbidden`；服务器策略或权限拒绝 |
-| 404 | `unsupported`；也可能部署路径错误，需要用户核对 |
-| 405 / 501 | `unsupported`；接口缺失/未实现 |
-| 429 | `rate_limited`；稍后用户/正常周期重试，无推理请求 |
-| 其他非 2xx | 固定 `server_error`，丢弃 raw body |
-| 任何 3xx | `redirect`，完全不 follow |
-| 超过 10 秒 / 网络失败 | `timeout` / `unreachable` |
-| 非法 JSON / 超过 2 MiB | `invalid_json` / `contract` |
-| 非 boolean limited、未知 period、未归属 Key | 不误标无限额，报告契约/归属异常 |
-| 缺失或无效数值/时间 | unknown，不从 local timezone、用量或模型价格补算 |
+| `period/offset/total/rows/by.model` | 核对范围、第一页及封闭尺寸；rows 不投影 |
+| `calls` | 最终调用计数；交给后续重试的尝试不是独立调用，未计入日志的拒绝不包含在此 |
+| `errors` | 最终向客户端返回错误的调用数；非负安全整数，缺失或大于 calls 为未知 |
+| `retried` | 首次尝试失败、重试后成功的调用数；官方 omitempty 省略为零，非法或大于成功调用数为未知 |
+| 成功率 | `(calls-errors)/calls`；零调用、未知计数不生成百分比 |
+| `input/output/cache_read/cache_write` | 四项 Token，非负安全整数；分项未知或总和溢出则总量和占比未知 |
+| Token 构成 | 展示四项及其在含缓存总量中的占比；与模型用量选择相同范围，加载及范围切换清空旧统计 |
+| `cache_write_1h/reasoning` | 已含在其他项中，不重复累加、不投影 |
+| `cost/unpriced` | 原始非负有限 USD 估算费用 / 未定价调用，未知不按价格补算 |
+| `by.model[].id` | 唯一模型 ID，限制长度、控制字符及密钥回显；不复制账号/provider/name/icon |
 
-个人额度、个人模型用量、共享卡片与可用模型列表单独处理错误。连接验证要求 `/limit` 支持；旧版本缺少此接口时不保存尚无法确认身份的连接，也不降级去读取共享 `/quotas`。
+完整合法 calls 及四项 Token 的模型合计须与根汇总一致；费用使用原值，不作浮点精确相等判断。仅投影 Totals 与 by.model；账号、callerKeys、会话、agents、computers、series、rows、路径和原始错误均不进入快照。
 
-仅核对上述 commit，尚未实测多个历史 tag、用户的实际部署版本、真实服务器响应或 Gateway key 权限。兼容性测试使用源码契约的合成 fixture 和接口缺失/变形 mock；不宣称所有 Magpie 版本已兼容。
+没有可靠个人接口时明确不可用，不填零。范围切换立即清空旧统计且丢弃迟到响应；同连接同范围暂时失败保留数据并标过期，权限或身份拒绝立即清空个人用量。切换、移除连接丢弃全部旧数据。可见时每 60 秒刷新，不重叠；保持 autoResize:false，隐藏、关闭后丢弃旧响应。
+
+## 错误与验证边界
+
+401 为 invalid_key；403 为 forbidden；404/405/501 为 unsupported；429 为 rate_limited；其他非 2xx 为 server_error；3xx 为 redirect 且不跟随。超时、网络、非法 JSON、结构或大小异常分别映射固定错误。不向用户或模型返回动态错误原文。
+
+额度、个人用量及独立模型列表分别处理失败。连接验证要求 limit 支持且 Key 归属明确，不降级到共享或管理接口。新增展示不增加远端读取次数，不展示模型用量读取时间。
+
+仅核对官方源码和合成 fixture；未访问实际远端、已有凭证或 Windows 实机，不宣称所有部署和历史版本兼容。

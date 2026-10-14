@@ -1,4 +1,4 @@
-import { GatewayError, parseModels, parseQuota, parseUpstreamCards, problem, readGateway } from '../lib/gateway';
+import { GatewayError, parseModels, parseQuota, problem, readGateway } from '../lib/gateway';
 import { isUsagePeriod, type Snapshot, type UsagePeriod } from '../lib/types';
 import { readPersonalUsage } from '../lib/usage';
 import { ConnectionStore, publicConnection } from './store';
@@ -8,7 +8,7 @@ export class Runtime {
   private pending: { revision: string; promise: Promise<Snapshot> } | null = null;
   constructor(readonly store: ConnectionStore) {}
   invalidate() { this.cache = null; this.pending = null; }
-  async snapshot(include: 'dashboard' | 'quota' | 'models' | 'cards', period: UsagePeriod = 'today'): Promise<Snapshot> {
+  async snapshot(include: 'dashboard' | 'quota' | 'models', period: UsagePeriod = 'today'): Promise<Snapshot> {
     if (!isUsagePeriod(period)) throw new GatewayError('usage_period', '请选择支持的用量时间范围。');
     const state = await this.store.read(), connection = state.connections.find(c => c.id === state.activeId);
     if (this.cache?.revision !== state.revision) this.cache = null;
@@ -21,7 +21,6 @@ export class Runtime {
     }
     const snapshot: Snapshot = this.cache ? structuredClone(this.cache) : { revision: state.revision,
       connection: publicConnection(connection), quota: null, models: null, quotaReadAt: null, modelsReadAt: null, quotaError: null, modelsError: null, stale: false };
-    snapshot.upstreamEnabled = true;
     // 其他时间范围的缓存不能作为当前选择的旧数据。
     if (include === 'dashboard' && snapshot.usage?.period !== period) {
       snapshot.usage = null; snapshot.usageReadAt = null; snapshot.usageError = null;
@@ -51,24 +50,18 @@ export class Runtime {
         try { snapshot.models = parseModels(await readGateway(connection.baseUrl, connection.key, 'models'), connection.key); snapshot.modelsReadAt = new Date().toISOString(); snapshot.modelsError = null; }
         catch (e) { snapshot.modelsError = problem(e); }
       })());
-      if (include === 'dashboard' || include === 'cards') tasks.push((async () => {
-        try { snapshot.upstreamCards = parseUpstreamCards(await readGateway(connection.baseUrl, connection.key, 'cards'), connection.key);
-          snapshot.upstreamReadAt = new Date().toISOString(); snapshot.upstreamError = null; }
-        catch (e) { snapshot.upstreamError = problem(e); }
-      })());
       await Promise.all(tasks);
       const current = await this.store.read();
       if (current.revision !== state.revision) {
         this.invalidate();
         return { ...snapshot, revision: current.revision, connection: null, quota: null, models: null, quotaReadAt: null, modelsReadAt: null,
           quotaError: { code: 'connection_changed', message: '连接已变更，旧响应已丢弃，请重新读取。' }, modelsError: null,
-          upstreamEnabled: false, upstreamCards: null, upstreamReadAt: null, upstreamError: null,
           usage: null, usageReadAt: null, usageError: null, stale: false };
       }
-      snapshot.stale = Boolean((snapshot.quotaError && snapshot.quota) || (snapshot.modelsError && snapshot.models) || (snapshot.upstreamError && snapshot.upstreamCards) || (snapshot.usageError && snapshot.usage));
+      snapshot.stale = Boolean((snapshot.quotaError && snapshot.quota) || (snapshot.modelsError && snapshot.models) || (snapshot.usageError && snapshot.usage));
       this.cache = snapshot;
       if (include === 'dashboard') return { ...snapshot, models: null, modelsReadAt: null, modelsError: null,
-        stale: Boolean((snapshot.quotaError && snapshot.quota) || (snapshot.upstreamError && snapshot.upstreamCards) || (snapshot.usageError && snapshot.usage)) };
+        stale: Boolean((snapshot.quotaError && snapshot.quota) || (snapshot.usageError && snapshot.usage)) };
       return snapshot;
     };
     const pending = { revision: state.revision, promise: read() };

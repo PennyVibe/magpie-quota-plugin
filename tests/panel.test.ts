@@ -248,12 +248,7 @@ test('Token 与费用上限分别可选，未设限不显示零余额或虚构�
 });
 test('所有可见时间转为北京时间并保留原始瞬间，移除三处读取时间', () => {
   const start = '2026-10-04T16:00:00.123456789Z';
-  const dom = new JSDOM(renderSnapshot({ ...snapshot, upstreamEnabled: false, upstreamCards: [{
-    provider: 'codex', name: 'Codex', kind: 'subscription', plan: null, cardNumber: 1, balance: '62483.16 credits',
-    readAt: '2026-10-10T09:00:00Z', asOf: null, unavailable: false,
-    windows: [{ name: '7 days', usedPercent: 25, remainingPercent: 75, unlimited: false, reset: '2026-10-14T03:45:00Z',
-      resetSeconds: null, amount: null, limit: null, unit: null }],
-  }],
+  const dom = new JSDOM(renderSnapshot({ ...snapshot,
     quota: { ...snapshot.quota!, start, reset: '2026-10-11T09:00:00-07:00' } }));
   try {
     const time = dom.window.document.querySelector<HTMLTimeElement>('.time-details time')!;
@@ -261,10 +256,7 @@ test('所有可见时间转为北京时间并保留原始瞬间，移除三处�
     assert.equal(time.textContent, '2026-10-05 00:00:00 北京时间');
     assert.equal(dom.window.document.querySelectorAll('.time-details time')[1].textContent, '2026-10-12 00:00:00 北京时间');
     assert.equal(dom.window.document.querySelector('.connection-read time')!.textContent, '2026-10-10 18:00:00 北京时间');
-    assert.equal(dom.window.document.querySelector('.window-reset time')!.textContent, '2026-10-14 11:45:00 北京时间');
-    assert.equal(dom.window.document.querySelector('.balance')!.textContent, 'Credits：62483.16');
     assert.doesNotMatch(dom.window.document.body.textContent!, /接口最后读取|供应商数据读取时间|最后读取|UTC|服务器时区/);
-    assert.match(dom.window.document.querySelector('.shared')!.textContent!, /服务器缓存/);
     assert.doesNotMatch(dom.window.document.body.textContent!, /尚未开启|明确开启/);
   } finally { dom.window.close(); }
 });
@@ -277,17 +269,44 @@ test('时间范围切换立即清空旧统计，丢弃迟到响应并保留选�
     const week = m.calls().at(-1);
     assert.equal(week.params.arguments.period, '7d');
     assert.doesNotMatch(document.querySelector('.model-usage')!.textContent!, /model-alpha|1.90K/);
+    assert.equal(document.querySelector('.token-breakdown'), null);
     document.querySelector<HTMLButtonElement>('[data-usage-period="30d"]')!.click(); await delay();
     m.respond({ id: week.id, result: { content: [], structuredContent: { ...snapshot, usage: { ...snapshot.usage!, period: '7d' } } } }); await delay();
     const month = m.calls().at(-1);
     assert.equal(month.params.arguments.period, '30d');
     assert.doesNotMatch(document.querySelector('.model-usage')!.textContent!, /model-alpha|1.90K/);
+    assert.equal(document.querySelector('.token-breakdown'), null);
     m.respond({ id: month.id, result: { content: [], structuredContent: { ...snapshot, usage: { ...snapshot.usage!, period: '30d' } } } }); await delay();
     assert.match(document.querySelector('.model-usage')!.textContent!, /model-alpha/);
+    assert.equal(document.querySelector('.usage-details .badge')!.textContent, '近 30 天');
+    assert.ok(document.querySelector('.token-breakdown'));
     assert.equal(document.querySelector('[data-usage-period="30d"]')!.getAttribute('aria-pressed'), 'true');
     assert.equal((document.activeElement as HTMLButtonElement).dataset.usagePeriod, '30d');
     m.setHeld(false); m.tick(60000); await delay();
     assert.equal(m.calls().at(-1).params.arguments.period, '30d');
     assert.equal(document.querySelector('[data-usage-period="30d"]')!.getAttribute('aria-pressed'), 'true');
   } finally { m.close(); }
+});
+test('个人详情展示四项 Token、调用质量及独立预算活动，缺失和零调用不生成成功率', () => {
+  const current = { ...snapshot, quota: parseQuota(quotaFixture({ calls: 12, inFlight: 2, reserved: 4500, reservedCost: .123456 })),
+    usage: parsePersonalUsage({ ...usageFixture(), errors: 1, retried: 2 }, keyA) };
+  const dom = new JSDOM(renderSnapshot(current));
+  try {
+    const document = dom.window.document;
+    assert.deepEqual([...document.querySelectorAll('.token-breakdown data')].map(el => el.getAttribute('value')), ['1000', '200', '600', '100']);
+    assert.deepEqual([...document.querySelectorAll('.request-quality dd')].map(el => el.textContent), ['66.7%', '1', '2']);
+    assert.deepEqual([...document.querySelectorAll('.budget-activity dd')].map(el => el.textContent), ['12', '2', '4.50K', '$0.123456']);
+    assert.doesNotMatch(document.body.textContent!, /共享供应商|共享额度/);
+  } finally { dom.window.close(); }
+  for (const totals of [
+    { ...current.usage.totals, calls: 0, errors: 0, retried: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, tokens: 0 },
+    { ...current.usage.totals, calls: null, errors: null, retried: null, input: null, tokens: null },
+  ]) {
+    const dom = new JSDOM(renderSnapshot({ ...current, usage: { ...current.usage, totals } }));
+    try {
+      assert.equal(dom.window.document.querySelector('.request-quality dd')!.textContent, '未提供');
+      assert.equal(dom.window.document.querySelector('.token-breakdown .track'), null);
+      assert.doesNotMatch(dom.window.document.body.textContent!, /NaN|Infinity/);
+    } finally { dom.window.close(); }
+  }
 });

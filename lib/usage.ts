@@ -13,7 +13,11 @@ function totals(value: unknown): UsageTotals {
   const input = numeric(o.input), output = numeric(o.output), cacheRead = numeric(o.cache_read), cacheWrite = numeric(o.cache_write);
   const parts = [input, output, cacheRead, cacheWrite];
   const sum = parts.every(v => v !== null) ? parts.reduce<number>((sum, v) => sum + v!, 0) : null;
-  return { calls: numeric(o.calls), input, output, cacheRead, cacheWrite, tokens: numeric(sum),
+  const calls = numeric(o.calls);
+  let errors = numeric(o.errors), retried = numeric(o.retried === undefined ? 0 : o.retried);
+  if (calls !== null && errors !== null && errors > calls) errors = null;
+  if (calls !== null && retried !== null && retried > calls - (errors ?? 0)) retried = null;
+  return { calls, errors, retried, input, output, cacheRead, cacheWrite, tokens: numeric(sum),
     cost: numeric(o.cost, false), unpriced: numeric(o.unpriced) };
 }
 

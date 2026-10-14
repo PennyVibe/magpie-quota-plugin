@@ -20,6 +20,19 @@ test('真实 contract 映射单窗口、服务器剩余和带偏移时间', () =
   assert.equal(q.tokens.remaining, 51); assert.equal(q.reset, '2026-10-12T00:00:00+08:00');
   assert.equal(q.cost.remaining, 1.875);
 });
+test('预算活动使用服务器原值，omitempty 零与非法数字、无预算的未知状态分开', () => {
+  const active = parseQuota(quotaFixture({ calls: 12, inFlight: 2, reserved: 4500, reservedCost: .123456 }));
+  assert.deepEqual([active.calls, active.inFlight, active.reservedTokens, active.reservedCost], [12, 2, 4500, .123456]);
+  assert.equal(active.tokens.used, 30); assert.equal(active.cost.remaining, 1.875);
+  const idle = parseQuota(quotaFixture());
+  assert.deepEqual([idle.inFlight, idle.reservedTokens, idle.reservedCost], [0, 0, 0]);
+  const unlimited = parseQuota({ limited: false, key: 'Synthetic' });
+  assert.deepEqual([unlimited.calls, unlimited.inFlight, unlimited.reservedTokens, unlimited.reservedCost], [null, null, null, null]);
+  for (const invalid of [null, -1, Infinity, '1', Number.MAX_SAFE_INTEGER + 1, .5]) {
+    const q = parseQuota(quotaFixture({ calls: invalid, inFlight: invalid, reserved: invalid, reservedCost: -1 }));
+    assert.deepEqual([q.calls, q.inFlight, q.reservedTokens, q.reservedCost], [null, null, null, null]);
+  }
+});
 test('每 N 天额度周期保留服务器起止时间、用量和剩余值', () => {
   const start = '2026-10-10T15:40:00Z';
   for (const days of [1, 10, 3650]) {

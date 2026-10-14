@@ -1,5 +1,17 @@
 # 本地验证记录
 
+## 2026-10-14 v0.1.6 个人信息展示与共享查询移除
+
+本节为当前行为与验证记录，后续历史章节中的共享默认查询及六工具描述不再适用。核对官方 HEAD `eb0d5750f86a39342f2901079f1a07bff3d06aa4` 及最新发布版 `v0.1.1231`：受限 Key 的共享卡片、历史及并发接口返回 `gateway_key_held`；个人额度及强制按 Key 隔离的调用用量继续开放。
+
+按用户要求移除共享查询 allowlist、解析、缓存字段、UI 与 `get_upstream_quota_cards` 工具。现在发现五个工具，旧连接文件的 `upstreamEnabled` 字段仅保留存储读取兼容。新增 Token 构成与调用质量卡片，展示四项 Token、占比、成功率、失败调用及重试成功次数；跟随今天 / 7d / 30d / all 切换，加载时不显示旧范围数据。额度卡片增加当前预算窗口调用数、在途请求、预留 Token 和预留费用，不把预留算入已结算值。新增展示复用现有请求，不增加网关查询。
+
+本地实际 76 项测试通过，0 失败、0 跳过；typecheck、lint、build、local:package、local:verify 、解包验证及 marketplace sync/check/verify 通过。已打包 STDIO 后台通过合成连接验证移除旧工具、没有共享路径请求、四个时间范围、预算活动与调用质量计数、Key 及账号不进入协议结果、stderr 为空。当前六项共享测试随功能删除，由 Runtime 的新旧连接固定请求边界覆盖“不读取共享”，保留个人用量的范围、身份、缓存与连接生命周期测试。
+
+Codex 内置浏览器使用构建 UI + 合成宿主验证桌面双列、Token 构成 / 调用质量、窄屏纵排及 7d 范围联动。桌面实际 DOM clientWidth/scrollWidth 均为 1600；390px 视口扣除滚动条后 DOM clientWidth/scrollWidth 均为 371，没有横向溢出。最新桌面合成截图保存为 `docs/dashboard-preview.png` 并用于 README。
+
+验证仅使用合成 Key / mock；未读取用户凭证、访问真实网关、替换已安装插件或进行 Windows 实机验证。本节记录发布前的本地验证；版本发布与双平台 CI 结果以 GitHub 为准。Node 26 的 tsx module.register 弃用提示仅出现在开发测试，打包后台验证 stderr 为零。
+
 ## 2026-10-11 README 截图更新
 
 按用户提供的新截图替换 `docs/dashboard-preview.png`，保留原始 3832 × 2688 分辨率。服务器地址所在区域以纯色完全覆盖，逐像素核对确认覆盖区域外与原图一致；重新保存的 PNG 不携带原图 EXIF、XMP 或其他元数据。已目视检查最终图片，服务器地址不可见，其余界面与数据保持原样。截图通过现有打包与 marketplace 同步流程交付，未改动插件代码或版本号。

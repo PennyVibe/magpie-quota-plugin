@@ -7,7 +7,7 @@ export const keyA = 'synthetic-gateway-alpha', keyB = 'synthetic-gateway-beta';
 export const quotaFixture = (overrides: Record<string, unknown> = {}) => ({
   limited: true, key: 'Synthetic user', limit: {
     period: 'week', start: '2026-10-05T00:00:00+08:00', reset: '2026-10-12T00:00:00+08:00',
-    tokens: 30, cost: 0.125, tokenLimit: 100, costLimit: 2, tokensLeft: 70, costLeft: 1.875, spent: false, ...overrides,
+    calls: 3, tokens: 30, cost: 0.125, tokenLimit: 100, costLimit: 2, tokensLeft: 70, costLeft: 1.875, spent: false, ...overrides,
   },
 });
 export const usageFixture = () => {

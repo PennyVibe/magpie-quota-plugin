@@ -1,4 +1,4 @@
-import type { Metric, Problem, Quota, UpstreamCard } from './types';
+import type { Metric, Problem, Quota } from './types';
 import { isUsagePeriod, type UsagePeriod } from './types';
 
 export class GatewayError extends Error {
@@ -46,7 +46,7 @@ export function parseQuota(value: unknown): Quota {
   if (typeof o.key !== 'string' || !o.key.trim()) throw new GatewayError('key_unattributed', '服务器未将请求归属到 Gateway key；无法确认 Key 身份或个人额度。');
   if (!o.limited) return { limited: false, period: null, days: null, start: null, reset: null,
     tokens: { limit: null, used: null, remaining: null, uncapped: true }, cost: { limit: null, used: null, remaining: null, uncapped: true },
-    spent: null, cacheReads: null, unpriced: null };
+    spent: null, cacheReads: null, unpriced: null, calls: null, inFlight: null, reservedTokens: null, reservedCost: null };
   const s = object(o.limit);
   if (typeof s.period !== 'string' || !['day', 'week', 'month', 'days'].includes(s.period)) throw new GatewayError('contract', '服务器返回了未支持的额度窗口。');
   const days = s.period === 'days' ? number(s.days, true) : null;
@@ -58,7 +58,11 @@ export function parseQuota(value: unknown): Quota {
   return { limited: true, period: s.period as Quota['period'], days, start: instant(s.start), reset: instant(s.reset),
     tokens, cost,
     spent: typeof s.spent === 'boolean' ? s.spent : null, cacheReads: typeof s.cacheReads === 'boolean' ? s.cacheReads : null,
-    unpriced: number(s.unpriced, true) };
+    unpriced: number(s.unpriced, true), calls: number(s.calls, true),
+    // These fields are omitted for zero in the current budget.Status contract.
+    inFlight: number(s.inFlight === undefined ? 0 : s.inFlight, true),
+    reservedTokens: number(s.reserved === undefined ? 0 : s.reserved, true),
+    reservedCost: number(s.reservedCost === undefined ? 0 : s.reservedCost) };
 }
 export function parseModels(value: unknown, key: string): string[] {
   const o = object(value);
@@ -66,35 +70,13 @@ export function parseModels(value: unknown, key: string): string[] {
   return [...new Set(o.data.map(item => object(item).id).filter((id): id is string =>
     typeof id === 'string' && id.length > 0 && id.length <= 300 && !id.includes(key) && !/[\x00-\x1f]/.test(id)))];
 }
-/** A deliberately small projection of SubscriptionQuota; no user, keys or raw errors. */
-export function parseUpstreamCards(value: unknown, key: string): UpstreamCard[] {
-  const o = object(value);
-  if (o.object !== 'list' || !Array.isArray(o.data) || o.data.length > 1000) throw new GatewayError('contract', '供应商额度卡片结构与已确认契约不符。');
-  const text = (v: unknown): string | null => typeof v === 'string' && v.length > 0 && v.length <= 300 && !v.includes(key) && !/[\x00-\x1f]/.test(v) ? v : null;
-  return o.data.map((value, index) => {
-    const c = object(value);
-    if (!Array.isArray(c.windows) || c.windows.length > 200) throw new GatewayError('contract', '供应商额度窗口结构与已确认契约不符。');
-    return { provider: text(c.provider) ?? '未知供应商', name: text(c.name) ?? '供应商额度',
-      kind: ['subscription', 'plan', 'balance'].includes(String(c.kind)) ? String(c.kind) : 'unknown',
-      plan: text(c.plan), cardNumber: index + 1, balance: text(c.balance), readAt: instant(c.readAt), asOf: instant(c.asOf),
-      unavailable: typeof c.error === 'string' && c.error.length > 0,
-      windows: c.windows.map(value => {
-        const w = object(value), used = number(w.used), unlimited = w.unlimited === true;
-        // QuotaReport uses max(0, 100-used); cached cards do not include remaining.
-        return { name: text(w.name) ?? '额度窗口', usedPercent: used, remainingPercent: unlimited || used === null ? null : Math.max(0, 100 - used),
-          unlimited, reset: instant(w.resetsAt), resetSeconds: number(w.resetSecs, true),
-          amount: number(w.amount), limit: number(w.limit), unit: text(w.unit) };
-      }) };
-  });
-}
-
 /** Closed GET allowlist; every redirect is refused before a second request. */
-export async function readGateway(baseUrl: string, key: string, endpoint: 'limit' | 'models' | 'cards' | 'usageScope' | 'usageRequests', timeoutMs = 10000, period: UsagePeriod = 'today'): Promise<unknown> {
+export async function readGateway(baseUrl: string, key: string, endpoint: 'limit' | 'models' | 'usageScope' | 'usageRequests', timeoutMs = 10000, period: UsagePeriod = 'today'): Promise<unknown> {
   if (!isUsagePeriod(period)) throw new GatewayError('usage_period', '请选择支持的用量时间范围。');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const path = { limit: 'magpie/limit', models: 'models', cards: 'magpie/quotas/cards',
+    const path = { limit: 'magpie/limit', models: 'models',
       usageScope: `magpie/usage?period=${period}`, usageRequests: `magpie/usage/requests?period=${period}&via=through&limit=1&offset=0` }[endpoint];
     const response = await fetch(`${baseUrl}/${path}`, {
       method: 'GET', headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' },

@@ -16,7 +16,7 @@ const client = new Client({ name: 'magpie-package-verification', version: '1.0.0
 let remote;
 try {
   await client.connect(transport);
-  assert.equal(client.getServerVersion()?.name, 'Magpie 额度看板'); assert.equal(client.getServerVersion()?.version, '0.1.5');
+  assert.equal(client.getServerVersion()?.name, 'Magpie 额度看板'); assert.equal(client.getServerVersion()?.version, '0.1.6');
   const tools = (await client.listTools()).tools;
   const icons = client.getServerVersion()?.icons;
   assert.equal(icons?.length, 1);
@@ -24,7 +24,7 @@ try {
   assert.deepEqual(icons[0].sizes, ['any']);
   assert.ok(icons[0].src.startsWith('data:image/svg+xml,'));
   assert.equal(decodeURIComponent(icons[0].src.slice('data:image/svg+xml,'.length)), await readFile(join(dirname(entry), '../assets/icon.svg'), 'utf8'));
-  assert.deepEqual(tools.map(t => t.name), ['open_quota_dashboard', 'get_my_gateway_quota', 'list_available_models', 'get_upstream_quota_cards', 'manage_connections', 'get_connection_state']);
+  assert.deepEqual(tools.map(t => t.name), ['open_quota_dashboard', 'get_my_gateway_quota', 'list_available_models', 'manage_connections', 'get_connection_state']);
   assert.deepEqual(tools[0]._meta?.['openai/ui']?.entrypoints, [{ type: 'global' }]);
   for (const tool of tools) {
     assert.equal(tool.annotations?.readOnlyHint, true); assert.equal(tool.inputSchema.additionalProperties, false);
@@ -33,7 +33,7 @@ try {
       assert.deepEqual(tool.inputSchema.properties.period.enum, ['today', '7d', '30d', 'all']);
     } else assert.deepEqual(tool.inputSchema.properties, {});
   }
-  for (const tool of tools.slice(4)) assert.deepEqual(tool._meta?.ui?.visibility, ['app']);
+  for (const tool of tools.slice(3)) assert.deepEqual(tool._meta?.ui?.visibility, ['app']);
   for (const name of tools.slice(0, 3).map(t => t.name)) {
     const result = await client.callTool({ name, arguments: {} });
     assert.equal(result.structuredContent.connection, null); assert.equal(result.structuredContent.quotaError.code, 'not_connected');
@@ -65,18 +65,16 @@ try {
       assert.deepEqual([...query.searchParams.keys()], ['period', 'via', 'limit', 'offset']);
       assert.equal(query.searchParams.get('via'), 'through');
       assert.equal(query.searchParams.get('limit'), '1'); assert.equal(query.searchParams.get('offset'), '0');
-      const totals = { calls: 2, input: 2000, output: 300, cache_read: 800, cache_write: 100, cost: .125, unpriced: 0 };
+      const totals = { calls: 2, errors: 0, retried: 1, input: 2000, output: 300, cache_read: 800, cache_write: 100, cost: .125, unpriced: 0 };
       res.end(JSON.stringify({ ...totals, period: query.searchParams.get('period'), offset: 0, total: 2,
         rows: [{ account: 'synthetic-private', error: synthetic }], callerKeys: [{ id: 'private-key-id' }],
         by: { model: [{ id: 'synthetic/model', ...totals }] } }));
       return;
     }
     res.end(JSON.stringify(req.url.endsWith('/models') ? { object: 'list', data: [{ id: 'synthetic/model' }, { id: synthetic }] } :
-      req.url.endsWith('/cards') ? { object: 'list', data: [{ provider: 'codex', name: 'Codex', kind: 'subscription',
-        user: 'synthetic-private@example.test', windows: [{ name: '5h', used: 25 }], error: synthetic }] } :
         cycle ? { limited: true, key: 'Synthetic package user', limit: { period: 'days', days: 10,
           start: '2026-10-10T23:40:00+08:00', reset: '2026-10-20T23:40:00+08:00',
-          tokens: 0, tokenLimit: 700, tokensLeft: 700, cost: 0, spent: false } } :
+          calls: 7, inFlight: 2, reserved: 100, reservedCost: .01, tokens: 0, tokenLimit: 700, tokensLeft: 700, cost: 0, spent: false } } :
           { limited: false, key: 'Synthetic package user' }));
   });
   await new Promise(resolve => remote.listen(0, '127.0.0.1', resolve));
@@ -120,16 +118,15 @@ try {
   assert.equal(connected.structuredContent.connection.baseUrl, address);
   assert.ok(!JSON.stringify(connected).includes(synthetic));
   assert.ok(!JSON.stringify(connected.content).includes('bootstrap='));
-  assert.equal(connected.structuredContent.upstreamEnabled, true);
-  assert.equal(connected.structuredContent.upstreamCards[0].windows[0].remainingPercent, 75);
-  assert.ok(paths.some(path => path.endsWith('/cards')));
-  const shared = await client.callTool({ name: 'get_upstream_quota_cards', arguments: {} });
-  assert.equal(shared.structuredContent.upstreamCards[0].windows[0].remainingPercent, 75);
-  assert.ok(!JSON.stringify(shared).includes(synthetic));
-  assert.ok(!JSON.stringify(shared).includes('synthetic-private'));
+  assert.ok(!paths.some(path => path.includes('/quotas')), 'Shared quota endpoints must never be queried');
+  assert.equal((await client.callTool({ name: 'get_upstream_quota_cards', arguments: {} })).isError, true);
+  assert.equal(cycled.structuredContent.quota.inFlight, 2);
+  assert.equal(cycled.structuredContent.quota.reservedTokens, 100);
+  assert.equal(connected.structuredContent.usage.totals.errors, 0);
+  assert.equal(connected.structuredContent.usage.totals.retried, 1);
   assert.equal(stderr, '');
-  console.log(JSON.stringify({ ok: true, entry, version: '0.1.5', tools: tools.length, globalFullscreen: true, sidebarIconMetadata: true,
-    noCredentials: true, syntheticBrowserConnection: true, prefixAndKeyRoundtrip: true, keyExcludedFromProtocol: true, sharedQuotaDefault: true,
+  console.log(JSON.stringify({ ok: true, entry, version: '0.1.6', tools: tools.length, globalFullscreen: true, sidebarIconMetadata: true,
+    noCredentials: true, syntheticBrowserConnection: true, prefixAndKeyRoundtrip: true, keyExcludedFromProtocol: true, sharedQuotaRemoved: true, personalActivity: true,
     personalUsageRanges: true, daysCycleQuota: true, usageMetadataExcluded: true, closedArguments: true, hostMetadataIsolated: true, stderrBytes: 0 }, null, 2));
 } finally {
   await client.close();

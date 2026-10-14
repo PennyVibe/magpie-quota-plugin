@@ -61,7 +61,7 @@ button:active:not(:disabled) { background: var(--tint); box-shadow: inset 0 1px 
 :focus-visible { outline: 3px solid #4a927e; outline-offset: 3px; }
 a { color: var(--accent); text-underline-offset: 3px; }
 .connection { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem 1rem; padding: 1rem .25rem; border-bottom: 1px solid var(--line); }
-.connection-identity, .card-title, .provider-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.connection-identity, .card-title { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .connection-identity { min-width: 0; justify-content: flex-start; flex-wrap: wrap; gap: .625rem; }
 .connection h2 { font-size: .9375rem; overflow-wrap: anywhere; }
 .connection-address { flex: 1; min-width: 8rem; font-size: .8125rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -72,20 +72,19 @@ a { color: var(--accent); text-underline-offset: 3px; }
 .dashboard-section-title { padding: 0 .25rem; }
 .quota-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.75rem; }
 .hint { font-size: .8125rem; color: var(--muted); line-height: 1.6; }
-.quota-card, .upstream-card, .empty, .model-usage {
+.quota-card, .usage-details, .empty, .model-usage {
   padding: 1.75rem;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--card-radius);
   box-shadow: var(--card-shadow);
 }
-.card-title, .provider-heading { align-items: flex-start; }
+.card-title { align-items: flex-start; }
 .card-identity { display: flex; align-items: center; gap: 1rem; min-width: 0; }
 .card-identity > div { min-width: 0; overflow-wrap: anywhere; }
 .card-identity .hint { margin-top: .375rem; }
 .card-icon { display: grid; place-items: center; flex: none; width: 3.25rem; height: 3.25rem; border-radius: 1.125rem; background: var(--tint); color: var(--accent); }
 .card-icon .icon { width: 1.6rem; height: 1.6rem; }
-.provider-icon { background: #edf2f7; color: #5d809f; }
 .badge { display: inline-flex; align-items: center; gap: .375rem; flex: none; padding: .375rem .625rem; border-radius: .5rem; background: var(--tint); color: var(--accent); font-size: .75rem; font-weight: 500; line-height: 1.5; }
 .badge.neutral { background: var(--soft); color: var(--muted); }
 .badge.exhausted { background: #fff0e5; color: #914a1c; }
@@ -93,16 +92,16 @@ a { color: var(--accent); text-underline-offset: 3px; }
 .metrics { display: grid; gap: 1.5rem; margin: 2rem 0 1.5rem; }
 .metric { min-width: 0; }
 .metric + .metric { border-top: 1px solid var(--line); padding-top: 1.5rem; }
-.metric-heading, .window-heading { display: flex; align-items: baseline; justify-content: space-between; gap: .75rem; margin-bottom: .75rem; }
-.metric-heading h3, .upstream-window strong { font-size: .9375rem; font-weight: 600; color: #344a43; }
-.metric-progress, .window-usage { color: var(--accent); font-size: 1.5rem; line-height: 1.2; font-weight: 500; letter-spacing: -.025em; text-align: right; }
-.metric-progress-unknown, .window-usage-unknown { color: var(--muted); font-size: .9375rem; letter-spacing: 0; }
+.metric-heading { display: flex; align-items: baseline; justify-content: space-between; gap: .75rem; margin-bottom: .75rem; }
+.metric-heading h3 { font-size: .9375rem; font-weight: 600; color: #344a43; }
+.metric-progress { color: var(--accent); font-size: 1.5rem; line-height: 1.2; font-weight: 500; letter-spacing: -.025em; text-align: right; }
+.metric-progress-unknown { color: var(--muted); font-size: .9375rem; letter-spacing: 0; }
 .metric-details { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: .75rem; margin-top: .875rem; }
 .used { display: flex; flex-direction: column-reverse; justify-content: flex-end; gap: .25rem; font-size: 1rem; font-weight: 500; }
 .metric-value { min-width: 0; overflow-wrap: anywhere; }
 .used > span, dt { font-size: .8125rem; font-weight: 400; color: var(--muted); }
 .used.unknown .metric-value { color: var(--muted); }
-.used, dd, time, .window-usage, .metric-progress, #countdown { font-variant-numeric: tabular-nums lining-nums; }
+.used, dd, time, .metric-progress, #countdown { font-variant-numeric: tabular-nums lining-nums; }
 .metric dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
 .metric dd { margin-top: .25rem; font-size: 1rem; font-weight: 500; overflow-wrap: anywhere; }
 .track, .track-placeholder { display: block; height: .4375rem; border-radius: 1rem; }
@@ -120,20 +119,17 @@ time { overflow-wrap: anywhere; }
 .empty p { color: var(--muted); font-size: .9375rem; }
 .empty h2 + p { margin-top: .75rem; }
 .empty button { margin-top: 1rem; }
-.shared { display: grid; gap: 1.25rem; }
-.shared-heading { padding: 0 .25rem; }
-.shared-heading h2 { font-size: 1rem; }
-.shared > .notice { margin: 0; }
-.upstream-card { overflow-wrap: anywhere; }
-.provider-heading h3 { font-size: 1.2rem; font-weight: 600; color: #243a34; }
-.provider-tag { font-size: .75rem; color: var(--muted); text-align: right; flex: none; }
-.balance { margin-top: 1.25rem; font-size: 1rem; font-variant-numeric: tabular-nums; }
-.upstream-windows { display: grid; gap: 1.5rem; margin-top: 2rem; }
-.upstream-window { min-width: 0; }
-.upstream-window + .upstream-window { border-top: 1px solid var(--line); padding-top: 1.5rem; }
-.window-remaining { margin-top: .75rem; }
-.window-reset { display: flex; align-items: baseline; gap: .375rem; margin-top: .375rem; }
-.window-reset .icon { width: 1rem; height: 1rem; align-self: flex-start; margin-top: .125rem; }
+.budget-activity { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .875rem 1rem; border-top: 1px solid var(--line); padding-top: 1rem; margin-bottom: 1.25rem; }
+.budget-activity dd { font-size: 1rem; margin-top: .25rem; overflow-wrap: anywhere; }
+.usage-details .section-title { flex-wrap: wrap; }
+.token-breakdown { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem 1.5rem; margin: 1.5rem 0; }
+.token-breakdown dd { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: .25rem .5rem; margin: .375rem 0 .625rem; font-size: 1.25rem; font-weight: 500; }
+.token-breakdown > div:nth-child(2) .track > div { background: #557fab; }
+.token-breakdown > div:nth-child(3) .track > div { background: #b88b45; }
+.token-breakdown > div:nth-child(4) .track > div { background: #80958c; }
+.request-quality { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; padding: 1.25rem 0; border-top: 1px solid var(--line); }
+.request-quality dd { margin-top: .375rem; font-size: 1.25rem; font-weight: 500; overflow-wrap: anywhere; }
+.details-stale { margin-top: .75rem; }
 .model-usage { display: flex; flex-direction: column; min-width: 0; min-height: 0; max-height: calc(100dvh - 2rem); overflow-y: auto; }
 .model-usage > * { flex-shrink: 0; }
 .usage-heading { align-items: flex-start; flex-wrap: wrap; row-gap: 1.25rem; }
@@ -181,13 +177,12 @@ time { overflow-wrap: anywhere; }
   .dashboard-layout { flex: 1; min-height: 0; grid-template-columns: minmax(0, .88fr) minmax(0, 1.12fr); grid-template-rows: auto minmax(0, 1fr); gap: 1.5rem 2rem; }
   .dashboard-section-title { grid-column: 1; }
   .quota-layout { display: flex; flex-direction: column; min-height: 0; grid-column: 1; grid-row: 2; align-self: stretch; }
-  .quota-card, .shared, .upstream-card, .model-usage { display: flex; flex-direction: column; }
+  .quota-card, .usage-details, .model-usage { display: flex; flex-direction: column; }
   .quota-layout > * { flex: 1 1 auto; min-height: 0; }
-  .quota-card, .quota-layout > .empty, .shared > .upstream-card, .shared > .empty { overflow-y: auto; overscroll-behavior-y: contain; }
-  .quota-card > *, .shared > *, .upstream-card > * { flex-shrink: 0; }
+  .quota-card, .quota-layout > .empty, .usage-details { overflow-y: auto; overscroll-behavior-y: contain; }
+  .quota-card > *, .usage-details > * { flex-shrink: 0; }
   .quota-card .reset { margin-top: auto; }
-  .shared > .upstream-card, .shared > .empty { flex: 1; min-height: 0; }
-  .upstream-windows { flex: 1 0 auto; }
+  .quota-layout > .usage-details { flex: 0 1 auto; }
   .model-usage { grid-column: 2; grid-row: 2; align-self: stretch; max-height: 100%; }
   .usage-models { display: flex; flex-direction: column; flex: 1; }
   .usage-model { display: flex; flex-direction: column; justify-content: center; flex: 1 0 auto; }
@@ -197,7 +192,7 @@ time { overflow-wrap: anywhere; }
 }
 @media (max-width: 1100px) {
   main { padding: 1.5rem; }
-  .quota-card, .upstream-card, .empty, .model-usage { padding: 1.5rem; }
+  .quota-card, .usage-details, .empty, .model-usage { padding: 1.5rem; }
   .card-identity { gap: .75rem; }
   .card-icon { width: 2.75rem; height: 2.75rem; border-radius: .875rem; }
   .card-title { flex-wrap: wrap; }
@@ -212,12 +207,11 @@ time { overflow-wrap: anywhere; }
   .connection-read { flex-basis: 100%; margin-left: 0; }
   .dashboard-layout { gap: 1.25rem; margin-top: 1.25rem; }
   .section-title { flex-wrap: wrap; gap: .625rem; }
-  .quota-card, .upstream-card, .empty, .model-usage { padding: 1.25rem; border-radius: 1.25rem; }
-  .card-title, .provider-heading { gap: .75rem; flex-wrap: wrap; }
-  .provider-tag { margin-left: auto; }
-  .metrics, .upstream-windows { margin-top: 1.5rem; }
-  .metric-progress, .window-usage { font-size: 1.25rem; }
-  .metric-progress-unknown, .window-usage-unknown { font-size: .875rem; }
+  .quota-card, .usage-details, .empty, .model-usage { padding: 1.25rem; border-radius: 1.25rem; }
+  .card-title { gap: .75rem; flex-wrap: wrap; }
+  .metrics { margin-top: 1.5rem; }
+  .metric-progress { font-size: 1.25rem; }
+  .metric-progress-unknown { font-size: .875rem; }
   .metric-details, .metric dl { gap: .5rem; }
   .metric dd, .used { font-size: .9375rem; }
   .time-details > div { grid-template-columns: 4.75rem minmax(0, 1fr); gap: .5rem; }
@@ -236,7 +230,7 @@ time { overflow-wrap: anywhere; }
 }
 @media (max-width: 360px) {
   main { padding: .75rem; }
-  .quota-card, .upstream-card, .empty, .model-usage { padding: 1rem; }
+  .quota-card, .usage-details, .empty, .model-usage { padding: 1rem; }
   .card-icon { width: 2.5rem; height: 2.5rem; }
   .metric-details { grid-template-columns: minmax(0, 1fr); }
   .used { flex-direction: row; justify-content: flex-start; align-items: baseline; flex-wrap: wrap; }

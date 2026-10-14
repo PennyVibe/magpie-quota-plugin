@@ -65,15 +65,12 @@ test('不同 Key 数据隔离、模型及结果没有 Gateway key 或共享标�
   } finally { await server.close(); await t.close(); }
 });
 for (const action of ['select', 'remove'] as const) test(`${action} 清空全部旧缓存和迟到响应`, { timeout: 5000 }, async () => {
-  const t = await temporaryStore(), usageEntered = deferred<void>(), cardsEntered = deferred<void>(), release = deferred<void>();
+  const t = await temporaryStore(), usageEntered = deferred<void>(), release = deferred<void>();
   let hold = false;
   const server = await mockServer(async (req, res) => {
     if (req.url?.endsWith('/models')) json(res, { object: 'list', data: [{ id: 'old/model' }] });
     else if (req.url?.endsWith('/limit')) json(res, quotaFixture({ tokens: req.headers.authorization === `Bearer ${keyA}` ? 11 : 22 }));
-    else if (req.url?.endsWith('/cards')) {
-      if (hold) { cardsEntered.resolve(); await release.promise; }
-      json(res, { object: 'list', data: [{ provider: 'codex', name: 'Codex', windows: [{ name: 'weekly', used: 25 }] }] });
-    } else {
+    else {
       if (hold) { usageEntered.resolve(); await release.promise; }
       json(res, usageFixture());
     }
@@ -86,14 +83,14 @@ for (const action of ['select', 'remove'] as const) test(`${action} 清空全部
     const runtime = new Runtime(t.store);
     assert.deepEqual((await runtime.snapshot('models')).models, ['old/model']);
     const first = await runtime.snapshot('dashboard');
-    assert.ok(first.quota && first.usage && first.upstreamCards?.length);
+    assert.ok(first.quota && first.usage);
     hold = true; const response = runtime.snapshot('dashboard');
-    await Promise.all([usageEntered.promise, cardsEntered.promise]);
+    await usageEntered.promise;
     await t.store.update(state.revision, s => { if (action === 'select') s.activeId = 'b'; else { s.connections = s.connections.filter(c => c.id !== 'a'); s.activeId = null; } });
     release.resolve(); const retired = await response;
     for (const field of ['connection', 'quota', 'models', 'quotaReadAt', 'modelsReadAt', 'modelsError',
-      'upstreamCards', 'upstreamReadAt', 'upstreamError', 'usage', 'usageReadAt', 'usageError'] as const) assert.equal(retired[field], null, field);
-    assert.equal(retired.quotaError?.code, 'connection_changed'); assert.equal(retired.upstreamEnabled, false); assert.equal(retired.stale, false);
+      'usage', 'usageReadAt', 'usageError'] as const) assert.equal(retired[field], null, field);
+    assert.equal(retired.quotaError?.code, 'connection_changed'); assert.equal(retired.stale, false);
     const next = await runtime.snapshot('dashboard');
     assert.equal(next.connection?.name ?? null, action === 'select' ? 'Beta' : null);
     assert.equal(next.quota?.tokens.used ?? null, action === 'select' ? 22 : null);
@@ -120,7 +117,7 @@ test('独立模型读取失败不会污染看板快照，看板不重复读取�
     if (req.url?.endsWith('/models')) {
       modelReads++;
       json(res, { object: 'list', data: [{ id: 'synthetic/model' }] }, modelReads === 1 ? 200 : 404);
-    } else json(res, req.url?.endsWith('/cards') ? { object: 'list', data: [] } : quotaFixture());
+    } else json(res, quotaFixture());
   });
   try {
     await t.store.update('empty', s => {
@@ -148,7 +145,6 @@ test('额度切换到每 N 天后继续读取个人模型用量，服务器重�
       reset: reset ? '2026-10-21T01:40:00+08:00' : '2026-10-20T23:40:00+08:00',
       ...(reset ? { tokens: 0, tokensLeft: 100, cost: 0, costLeft: 2 } : {}),
     } : {}));
-    else if (req.url?.endsWith('/cards')) json(res, { object: 'list', data: [] });
     else json(res, usageFixture());
   });
   try {
@@ -170,9 +166,34 @@ test('额度切换到每 N 天后继续读取个人模型用量，服务器重�
     assert.equal(restarted.quota?.tokens.used, 0); assert.equal(restarted.quota?.cost.used, 0);
     assert.deepEqual(restarted.usage, changed.usage);
     assert.deepEqual([...new Set(paths)].sort(), [
-      '/v1/magpie/limit', '/v1/magpie/quotas/cards',
+      '/v1/magpie/limit',
       '/v1/magpie/usage/requests?period=today&via=through&limit=1&offset=0',
     ]);
     assert.ok(!JSON.stringify(restarted).includes(keyA));
+  } finally { await server.close(); await t.close(); }
+});
+test('新旧连接都只查询个人额度和用量，旧共享开关不恢复共享查询或泄露字段', async () => {
+  const t = await temporaryStore(), paths: string[] = [];
+  const server = await mockServer((req, res) => {
+    paths.push(req.url!);
+    if (req.url?.endsWith('/limit')) json(res, quotaFixture({ inFlight: 2, reserved: 4500, reservedCost: .1 }));
+    else if (req.url?.includes('/usage/requests?')) json(res, { ...usageFixture(), errors: 1, retried: 1 });
+    else json(res, { error: { code: 'gateway_key_held', message: keyA } }, 403);
+  });
+  try {
+    let state = await t.store.update('empty', s => {
+      s.connections = [{ id: 'a', name: 'Alpha', baseUrl: `${server.origin}/v1`, key: keyA }]; s.activeId = 'a';
+    });
+    const runtime = new Runtime(t.store);
+    for (const legacy of [undefined, false, true]) {
+      state = await t.store.update(state.revision, s => { s.connections[0].upstreamEnabled = legacy; });
+      paths.length = 0;
+      const result = await runtime.snapshot('dashboard');
+      assert.deepEqual(paths, ['/v1/magpie/limit', '/v1/magpie/usage/requests?period=today&via=through&limit=1&offset=0']);
+      assert.equal(result.quota?.inFlight, 2); assert.equal(result.quota?.reservedTokens, 4500);
+      assert.equal(result.usage?.totals.errors, 1); assert.equal(result.usage?.totals.retried, 1);
+      assert.equal(result.stale, false);
+      assert.doesNotMatch(JSON.stringify(result), /upstream|private-|synthetic-gateway/);
+    }
   } finally { await server.close(); await t.close(); }
 });

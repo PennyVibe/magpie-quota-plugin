@@ -16,7 +16,7 @@ const client = new Client({ name: 'magpie-package-verification', version: '1.0.0
 let remote;
 try {
   await client.connect(transport);
-  assert.equal(client.getServerVersion()?.name, 'Magpie 额度看板'); assert.equal(client.getServerVersion()?.version, '0.1.6');
+  assert.equal(client.getServerVersion()?.name, 'Magpie 额度看板'); assert.equal(client.getServerVersion()?.version, '0.1.7');
   const tools = (await client.listTools()).tools;
   const icons = client.getServerVersion()?.icons;
   assert.equal(icons?.length, 1);
@@ -125,7 +125,7 @@ try {
   assert.equal(connected.structuredContent.usage.totals.errors, 0);
   assert.equal(connected.structuredContent.usage.totals.retried, 1);
   assert.equal(stderr, '');
-  console.log(JSON.stringify({ ok: true, entry, version: '0.1.6', tools: tools.length, globalFullscreen: true, sidebarIconMetadata: true,
+  console.log(JSON.stringify({ ok: true, entry, version: '0.1.7', tools: tools.length, globalFullscreen: true, sidebarIconMetadata: true,
     noCredentials: true, syntheticBrowserConnection: true, prefixAndKeyRoundtrip: true, keyExcludedFromProtocol: true, sharedQuotaRemoved: true, personalActivity: true,
     personalUsageRanges: true, daysCycleQuota: true, usageMetadataExcluded: true, closedArguments: true, hostMetadataIsolated: true, stderrBytes: 0 }, null, 2));
 } finally {

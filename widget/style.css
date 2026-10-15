@@ -176,8 +176,11 @@ time { overflow-wrap: anywhere; }
   main > * { flex-shrink: 0; }
   .dashboard-layout { flex: 1; min-height: 0; grid-template-columns: minmax(0, .88fr) minmax(0, 1.12fr); grid-template-rows: auto minmax(0, 1fr); gap: 1.5rem 2rem; }
   .dashboard-section-title { grid-column: 1; }
-  .quota-layout { display: flex; flex-direction: column; min-height: 0; grid-column: 1; grid-row: 2; align-self: stretch; }
+  .quota-layout { display: flex; flex-direction: column; min-height: 0; grid-column: 1; grid-row: 2; align-self: stretch; gap: 1.25rem; }
   .quota-card, .usage-details, .model-usage { display: flex; flex-direction: column; }
+  .quota-card, .usage-details { padding-block: 1.5rem; }
+  .quota-card .metrics { margin: 1.5rem 0 1.25rem; }
+  .usage-details .token-breakdown { margin-block: 1.25rem; }
   .quota-layout > * { flex: 1 1 auto; min-height: 0; }
   .quota-card, .quota-layout > .empty, .usage-details { overflow-y: auto; overscroll-behavior-y: contain; }
   .quota-card > *, .usage-details > * { flex-shrink: 0; }

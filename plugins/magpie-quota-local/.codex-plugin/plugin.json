@@ -1,6 +1,6 @@
 {
   "name": "magpie-quota-local",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Magpie Gateway key 个人额度看板，本机独立连接管理。",
   "author": {
     "name": "Local Tools"

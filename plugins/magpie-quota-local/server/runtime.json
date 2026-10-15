@@ -1,6 +1,6 @@
 {
   "name": "magpie-quota-local",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "node": ">=22.13.0",
   "platform": "darwin",
   "arch": "arm64",
